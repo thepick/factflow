@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactFlow v27</title>
-  <!-- v28: Full sync audit resolution -- 412 pull-before-push, settings sync, cross-tab Drive push, non-merged state fields, unified lifecycle guard, sync instrumentation, dead code removal -->
+  <title>FactFlow v28</title>
+  <!-- v28: Full sync audit resolution -- 412 pull-before-push, settings sync, cross-tab Drive push, non-merged state fields, unified lifecycle guard, sync instrumentation, dead code removal, mobile debug access -->
   <link rel="icon" type="image/png" sizes="512x512" href="favicon-512x512.png">
   <link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png">
   <link rel="icon" type="image/png" sizes="64x64"   href="favicon-64x64.png">
@@ -595,6 +595,8 @@
               <button type="button" class="settings-item danger" id="settingsConfirmResetBtn">Yes, delete everything</button>
               <button type="button" class="settings-item" id="settingsCancelResetBtn">Cancel</button>
             </div>
+            <div class="settings-section-label" style="margin-top:var(--space-1)">Diagnostics</div>
+            <button type="button" class="settings-item" id="settingsDebugBtn">Sync Debug: off</button>
           </div>
         </div>
         <button type="button" class="icon-btn" id="themeToggle" aria-label="Toggle theme" title="Toggle theme">◐</button>
@@ -1980,6 +1982,24 @@
           document.getElementById('resetConfirm').style.display = 'none';
         });
       }
+      // v28: mobile-friendly sync debug toggle (settings menu + double-tap logo)
+      var debugBtn = document.getElementById('settingsDebugBtn');
+      if (debugBtn) {
+        debugBtn.addEventListener('click', function() {
+          toggleSyncDebug();
+          debugBtn.textContent = syncDebug ? 'Sync Debug: on' : 'Sync Debug: off';
+          if (el.settingsDropdown) el.settingsDropdown.classList.remove('open');
+        });
+      }
+      // Double-tap the logo to toggle debug
+      var logoEl = document.querySelector('.logo');
+      if (logoEl) {
+        var logoDtapTimer = null;
+        logoEl.addEventListener('click', function() {
+          if (logoDtapTimer) { clearTimeout(logoDtapTimer); logoDtapTimer = null; toggleSyncDebug(); return; }
+          logoDtapTimer = setTimeout(function() { logoDtapTimer = null; }, 300);
+        });
+      }
       if (el.useDemoBtn) el.useDemoBtn.addEventListener('click', function () { state.demoMode = true; state.googleUser = null; renderAuthUI(); });
       el.signOutBtn.addEventListener('click', signOut);
       el.startBtn.addEventListener('click', startRound);
@@ -2757,9 +2777,13 @@
         }
       } catch (e) {}
 
-      // v28: Restore sync debug mode from previous session
-      try { if (localStorage.getItem('factflow-sync-debug')) { syncDebug = true; } } catch(e) {}
+      // v28: Restore sync debug mode from previous session (or URL param ?syncdebug=1)
+      try {
+        if (localStorage.getItem('factflow-sync-debug') || location.search.indexOf('syncdebug=1') >= 0) { syncDebug = true; }
+      } catch(e) {}
       if (syncDebug) { renderSyncDebugPanel(); document.getElementById('syncDebugPanel').classList.remove('hidden'); }
+      var dbgBtn = document.getElementById('settingsDebugBtn');
+      if (dbgBtn) dbgBtn.textContent = syncDebug ? 'Sync Debug: on' : 'Sync Debug: off';
 
       // Initialize Google Sign-In UI (but don't prompt yet)
       initGoogleSignIn();
