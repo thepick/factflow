@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactFlow</title>
+  <title>FactFlow v27</title>
+  <!-- v28: Full sync audit resolution -- 412 pull-before-push, settings sync, cross-tab Drive push, non-merged state fields, unified lifecycle guard, sync instrumentation, dead code removal -->
   <link rel="icon" type="image/png" sizes="512x512" href="favicon-512x512.png">
   <link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png">
   <link rel="icon" type="image/png" sizes="64x64"   href="favicon-64x64.png">
@@ -106,7 +107,6 @@
     .graduate-banner.active { display: block; }
     @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     .hidden { display: none !important; }
-    #teacherView { display: none !important; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
     /* ── Progress Grid ── */
     .pg-panel {
@@ -696,85 +696,20 @@
         </aside>
       </div>
     </section>
-
-    <!-- ═══ TEACHER VIEW ═══ -->
-    <section id="teacherView" class="hidden">
-      <div class="teacher-gate panel" id="teacherGate">
-        <h2>Teacher access</h2>
-        <p class="subtle" style="margin:1rem 0;">Enter the teacher PIN to change settings for all students.</p>
-        <div style="display:flex;gap:0.5rem;max-width:260px;margin:0 auto;">
-          <input id="teacherPinInput" type="password" placeholder="PIN" maxlength="8" style="text-align:center;font-size:1.15rem;" />
-          <button type="button" class="btn" id="teacherUnlockBtn">Unlock</button>
-        </div>
-        <div class="status-text" id="teacherGateStatus" style="margin-top:0.75rem;"></div>
-      </div>
-      <div class="teacher-settings hidden" id="teacherSettings">
-        <div class="panel">
-          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:var(--space-3);">
-            <h2>Teacher settings</h2>
-            <button type="button" class="btn-ghost" id="backToPracticeBtn">← Back to practice</button>
-          </div>
-          <p class="subtle">Students auto-graduate through tables 2–12. All students start at ×2. These settings apply to everyone.</p>
-          <div class="split-2" style="margin-top:var(--space-3);">
-            <div class="field">
-              <label for="durationSelect">Round length</label>
-              <select id="durationSelect">
-                <option value="45">45 seconds</option>
-                <option value="60" selected>60 seconds</option>
-                <option value="90">90 seconds</option>
-                <option value="120">120 seconds</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="reviewMixSelect">Review mix</label>
-              <select id="reviewMixSelect">
-                <option value="20">20% old material</option>
-                <option value="30" selected>30% old material</option>
-                <option value="40">40% old material</option>
-              </select>
-            </div>
-          </div>
-          <div class="field">
-            <span class="legend">Presentation order</span>
-            <div class="choice-grid" id="orderChoices"></div>
-          </div>
-          <div class="field">
-            <label for="timeoutSecSelect">Timeout — show answer after</label>
-            <select id="timeoutSecSelect">
-              <option value="8">8 seconds</option>
-              <option value="12" selected>12 seconds</option>
-              <option value="15">15 seconds</option>
-              <option value="20">20 seconds</option>
-            </select>
-          </div>
-          <div class="field">
-            <span class="legend">Adaptive repetition</span>
-            <div class="split-2" style="gap:0.5rem;">
-              <div><label for="fluentMsInput">Fluent under (ms)</label><input id="fluentMsInput" type="number" min="1000" max="8000" step="100" /></div>
-              <div><label for="overdueMsInput">Overdue after (ms)</label><input id="overdueMsInput" type="number" min="1000" max="30000" step="500" /></div>
-              <div><label for="wrongWeightInput">Wrong answer weight</label><input id="wrongWeightInput" type="number" min="0.5" max="4" step="0.1" /></div>
-              <div><label for="slowWeightInput">Slow answer weight</label><input id="slowWeightInput" type="number" min="0.2" max="3" step="0.1" /></div>
-            </div>
-          </div>
-          <div class="row" style="margin-top:1rem;">
-            <button type="button" class="btn" id="saveSettingsBtn">Save settings</button>
-            <button type="button" class="btn-ghost" id="resetSettingsBtn">Reset to defaults</button>
-          </div>
-          <div class="status-text good" id="settingsStatus">Settings loaded.</div>
-        </div>
-      </div>
-    </section>
   </div>
 
   <div class="levelup-toast" id="levelupToast" aria-live="polite"></div>
   <div class="graph-tooltip" id="graphTooltip"></div>
+  <!-- v28: Sync debug panel -->
+  <div id="syncDebugPanel" class="hidden" style="position:fixed;bottom:8px;right:8px;width:380px;max-height:360px;background:#1a1a2e;color:#e0e0e0;border:1px solid #444;border-radius:8px;padding:8px 10px;font-size:0.7rem;font-family:monospace;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.5);overflow:hidden;"></div>
   <script>
   (function () {
     'use strict';
 
     // ═══════════════════════════ CONFIG ═══════════════════════════
     var GOOGLE_CLIENT_ID = '220590044784-6bohsjumu2r67ds92lhmfdubhh3qen5i.apps.googleusercontent.com';
-    var STORAGE_KEY    = 'factflow-progress-';  // localStorage key prefix
+    var STORAGE_KEY         = 'factflow-progress-';  // localStorage key prefix
+    var SETTINGS_KEY       = 'factflow-settings';    // Bug M6 fix: persist teacher settings
     var STARTING_TABLE = 2;   // First times table (default: 2)
     var MAX_TABLE      = 12;  // Last times table  (default: 12)
 
@@ -793,10 +728,11 @@
     };
 
     // ═══════════════════════════ STATE ═══════════════════════════
+    // Bug M6 fix: use loadSettings() so saved teacher settings are restored on page load.
     var state = {
       googleUser: null,
       demoMode: true,
-      settings: copySettings(APP_SETTINGS)
+      settings: loadSettings()
     };
 
     var round = null;
@@ -805,6 +741,7 @@
     var lastProblemKey = null;
     var timeoutTimer = null;
     var cooldownUntil = 0;
+    var cooldownFactKey = null;  // Bug M1 fix: track which fact triggered the cooldown
     var wrongBurstCount = 0;
     var wrongBurstStart = 0;
     var lastTheme = (function(){
@@ -812,23 +749,72 @@
       try { saved = localStorage.getItem('factflow-theme'); } catch(e) {}
       return saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     })();
-    var justGraduated = false; // Show banner after round ends
     var graphShowAllLabels = false; // Toggle: show all x-axis date labels
     var driveTokenClient  = null;  // Google OAuth2 token client for Drive API
     var driveAccessToken  = null;  // In-memory access token (expires in ~1hr)
     var driveFileId       = null;  // Cached Drive file ID for factflow-progress.json
     var syncPending       = false; // Prevents overlapping sync calls
-    var sessionQuizCount = 0;    // Resets each page load
+    var DRIVE_TOKEN_CACHE_KEY = 'factflow-drive-token';
+    var DRIVE_TOKEN_EXPIRY_KEY  = 'factflow-drive-token-expiry';
+    var syncDebounceTimer       = null;
+    var localProgressDirty = false; // Only upload progress after this tab changes it
     var startBtnCooldown = null; // Post-round delay interval
+    
+    // PHASE 2: Atomic sync and retry mechanism
+    var syncRetryEntry = null;  // D3 fix: single retry entry (was always single-element)
+    var syncRetryTimer = null; // Timer for exponential backoff retries
+    var MAX_SYNC_RETRIES = 3; // Give up after 3 retries
+    var SYNC_RETRY_BACKOFF_BASE_MS = 2000; // Start at 2 seconds, then 4s, 8s
+    var driveFileEtag = null; // ETag of last-known Drive file state, used for conflict detection
+    var TOKEN_EXPIRY_WARN_MS = 5 * 60 * 1000; // Warn 5 min before token expiry
+    var pageUnloadSyncing = false; // P3 fix: single guard for pagehide+beforeunload double-fire
+    // -- v28: Sync instrumentation --
+    var syncDebug = false;               // Toggle with Ctrl+Shift+D
+    var syncLog = [];                    // Ring buffer of sync events
+    var MAX_SYNC_LOG = 200;
+    function addSyncLog(action, detail) {
+      if (!syncDebug) return;
+      var entry = { at: new Date().toISOString(), ts: Date.now(), action: action, detail: detail };
+      syncLog.push(entry);
+      if (syncLog.length > MAX_SYNC_LOG) syncLog.shift();
+      if (typeof console !== 'undefined' && console.log) {
+        console.log('[SyncTrace]', entry.at, action, detail);
+      }
+    }
+    function toggleSyncDebug() {
+      syncDebug = !syncDebug;
+      var dbgEl = document.getElementById('syncDebugPanel');
+      if (dbgEl) {
+        dbgEl.classList.toggle('hidden', !syncDebug);
+        if (syncDebug) renderSyncDebugPanel();
+      }
+      try { localStorage.setItem('factflow-sync-debug', syncDebug ? '1' : ''); } catch(e) {}
+    }
+    function renderSyncDebugPanel() {
+      var el = document.getElementById('syncDebugPanel');
+      if (!el || !syncDebug) return;
+      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><strong>Sync Trace</strong><button id="syncDebugClearBtn" style="font-size:0.7rem;padding:2px 8px;border:1px solid #666;border-radius:4px;background:transparent;color:#ccc;cursor:pointer">Clear</button></div>';
+      html += '<div style="font-size:0.65rem;font-family:monospace;max-height:300px;overflow-y:auto;line-height:1.6">';
+      var entries = syncLog.slice().reverse();
+      if (!entries.length) { html += '<span style="opacity:0.5">No sync events yet</span>'; }
+      entries.forEach(function(e) {
+        var color = '#8f8';
+        if (e.detail && (e.detail.indexOf('error') !== -1 || e.detail.indexOf('fail') !== -1 || e.detail.indexOf('Error') !== -1)) color = '#f88';
+        else if (e.detail && (e.detail.indexOf('warn') !== -1 || e.detail.indexOf('Conflict') !== -1)) color = '#ff8';
+        html += '<div style="color:' + color + '"><span style="opacity:0.6">' + (e.at ? e.at.slice(11, 23) : '') + '</span> <b>' + e.action + '</b> ' + (e.detail || '') + '</div>';
+      });
+      html += '</div>';
+      el.innerHTML = html;
+      var clearBtn = document.getElementById('syncDebugClearBtn');
+      if (clearBtn) clearBtn.addEventListener('click', function() { syncLog = []; renderSyncDebugPanel(); });
+    }
 
     // ═══════════════════════════ DOM REFS ═══════════════════════════
     var el = {};
     function cacheDom() {
       el.themeToggle = document.getElementById('themeToggle');
       el.topLogin = document.getElementById('topLogin');
-      el.teacherTabBtn = document.getElementById('teacherTabBtn');
       el.practiceView = document.getElementById('practiceView');
-      el.teacherView = document.getElementById('teacherView');
       el.signInPanel = document.getElementById('signInPanel');
       el.googleSignInBtn = document.getElementById('googleSignInBtn');
       el.demoNote = document.getElementById('demoNote');
@@ -874,24 +860,6 @@
       el.quizCountValue = document.getElementById('quizCountValue');
       el.timeLeftStat = document.getElementById('timeLeftStat');
       el.keyButtons = Array.from(document.querySelectorAll('.key-btn'));
-      // Teacher
-      el.teacherGate = document.getElementById('teacherGate');
-      el.teacherSettings = document.getElementById('teacherSettings');
-      el.teacherPinInput = document.getElementById('teacherPinInput');
-      el.teacherUnlockBtn = document.getElementById('teacherUnlockBtn');
-      el.teacherGateStatus = document.getElementById('teacherGateStatus');
-      el.backToPracticeBtn = document.getElementById('backToPracticeBtn');
-      el.durationSelect = document.getElementById('durationSelect');
-      el.reviewMixSelect = document.getElementById('reviewMixSelect');
-      el.timeoutSecSelect = document.getElementById('timeoutSecSelect');
-      el.orderChoices = document.getElementById('orderChoices');
-      el.fluentMsInput = document.getElementById('fluentMsInput');
-      el.overdueMsInput = document.getElementById('overdueMsInput');
-      el.wrongWeightInput = document.getElementById('wrongWeightInput');
-      el.slowWeightInput = document.getElementById('slowWeightInput');
-      el.saveSettingsBtn = document.getElementById('saveSettingsBtn');
-      el.resetSettingsBtn = document.getElementById('resetSettingsBtn');
-      el.settingsStatus = document.getElementById('settingsStatus');
     }
 
     // ═══════════════════════════ SETTINGS ═══════════════════════════
@@ -915,11 +883,32 @@
     }
 
     function loadSettings() {
+      // Bug M6 fix: load from localStorage; fall back to APP_SETTINGS defaults.
+      try {
+        var raw = localStorage.getItem(SETTINGS_KEY);
+        if (raw) {
+          var saved = JSON.parse(raw);
+          // Merge saved values over defaults so new fields aren't undefined.
+          return {
+            durationSec: saved.durationSec || 60,
+            orderMode: saved.orderMode || 'mixed',
+            timeoutSec: saved.timeoutSec || 12,
+            reviewMixPct: saved.reviewMixPct || 30,
+            adaptive: {
+              fluentMs:    saved.adaptive && saved.adaptive.fluentMs    || 3200,
+              overdueMs:   saved.adaptive && saved.adaptive.overdueMs   || 8000,
+              wrongWeight: saved.adaptive && saved.adaptive.wrongWeight || 1.6,
+              slowWeight:  saved.adaptive && saved.adaptive.slowWeight  || 0.9
+            }
+          };
+        }
+      } catch (e) {}
       return defaultSettings();
     }
 
     function saveSettingsToStorage() {
-      // Settings are code-only in v5.
+      // Bug M6 fix: teacher settings now persist across page reloads.
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch(e) {}
     }
 
     // ═══════════════════════════ PROGRESS ═══════════════════════════
@@ -949,11 +938,25 @@
       } catch (e) { return defaultProgress(); }
     }
 
+    var syncPendingSnapshot = null; // Snapshot of progress JSON at debounce time (P1 fix)
+
     function saveProgressToStorage(progress) {
       var uid = getUserId();
       if (!uid) return;
       progress.updatedAt = new Date().toISOString();
-      localStorage.setItem(STORAGE_KEY + uid, JSON.stringify(progress));
+      progress.settings = copySettings(state.settings);
+      var json = JSON.stringify(progress);
+      localStorage.setItem(STORAGE_KEY + uid, json);
+      localProgressDirty = true;
+
+      if (state.googleUser) {
+        clearTimeout(syncDebounceTimer);
+        // P1 fix: snapshot the JSON now so upload reads consistent data
+        syncPendingSnapshot = json;
+        syncDebounceTimer = setTimeout(function () {
+          triggerDriveSync();
+        }, 600);
+      }
     }
 
     function getFactStats(table, second) {
@@ -1027,7 +1030,6 @@
 
     function graduate(progress) {
       progress.currentTable = Math.min(progress.currentTable + 1, MAX_TABLE);
-      justGraduated = true;
       saveProgressToStorage(progress);
     }
 
@@ -1173,7 +1175,11 @@
     }
 
     // ═══════════════════════════ GOOGLE SIGN-IN ═══════════════════════════
+    var googleSignInInitialized = false;  // Prevent duplicate initialization
+    
     function initGoogleSignIn() {
+      if (googleSignInInitialized) return;  // Only initialize once
+      
       var btn = el.googleSignInBtn;
       if (!btn) return;
       if (GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID') === 0) {
@@ -1187,9 +1193,21 @@
         setTimeout(function () { waitForGis(cb, n + 1); }, 200);
       }
       waitForGis(function () {
-        google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleSignIn, auto_select: true, cancel_on_tap_outside: false });
-        if (!state.googleUser) { google.accounts.id.prompt(); }
+        // Initialize with auto_select - let Google handle silent sign-in for existing sessions
+        var options = {
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleGoogleSignIn,
+          auto_select: true,
+          cancel_on_tap_outside: false
+        };
+        google.accounts.id.initialize(options);
+        
+        // Don't call prompt() here - it causes the unwanted account picker on page reload
+        // Instead, only show the rendered button, which user can click if needed
+        // Google's auto_select will handle silent sign-in if a valid session exists
+        
         google.accounts.id.renderButton(btn, { theme: 'outline', size: 'large', type: 'standard', text: 'signin_with' });
+        googleSignInInitialized = true;
       });
     }
 
@@ -1200,17 +1218,13 @@
         state.demoMode = false;
         // Persist login across page reloads
         try { localStorage.setItem('factflow-google-user', JSON.stringify(state.googleUser)); } catch(e) {}
-        // Migrate any existing demo progress to this Google account (first-time sign-in)
-        try {
-          var googleKey = STORAGE_KEY + state.googleUser.sub;
-          var demoKey   = STORAGE_KEY + 'demo-user';
-          var hasGoogle = !!localStorage.getItem(googleKey);
-          var demoData  = localStorage.getItem(demoKey);
-          if (!hasGoogle && demoData) {
-            localStorage.setItem(googleKey, demoData);
-          }
-        } catch(e) {}
+        // Note: demo progress is NOT pre-migrated here. smartMergeProgress (called by
+        // loadProgressFromDrive below) already handles merging local-only facts correctly
+        // when Drive has no data on first sign-in. Pre-migrating here was dead code
+        // because loadProgressFromDrive immediately overwrote the key anyway (Bug C1).
         initDriveTokenClient();
+        startPeriodicSync();
+        startTokenExpiryCheck();
         getOrRefreshDriveToken('load', loadProgressFromDrive, true);
         renderAuthUI();
       } catch (e) {
@@ -1228,10 +1242,29 @@
     }
 
     function signOut() {
+      // Revoke token with Google before clearing
+      if (driveAccessToken) {
+        // Bug H7 fix: drop no-cors so errors surface properly.
+        // With no-cors the response is always opaque, making success/failure
+        // indistinguishable and silently swallowing network/CORS failures.
+        // Revocation is best-effort; we proceed with local sign-out regardless.
+        fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(driveAccessToken), {
+          method: 'POST'
+        }).catch(function () {});  // network/revocation failures are non-fatal
+      }
+
       state.googleUser = null;
-      state.demoMode = true;
-      try { localStorage.removeItem('factflow-google-user'); } catch(e) {}
-      if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
+      state.demoMode   = true;
+      driveAccessToken = null;
+      driveFileId      = null;
+
+      try { localStorage.removeItem('factflow-google-user'); } catch (e) {}
+      clearDriveTokenStorage();
+
+      if (window.google && google.accounts && google.accounts.id) {
+        google.accounts.id.disableAutoSelect();
+      }
+      stopPeriodicSync();
       stopRound(false);
       renderAuthUI();
     }
@@ -1376,7 +1409,10 @@
 
     function handleAnswerInput() {
       if (!round || !round.currentProblem) return;
-      if (cooldownUntil && Date.now() < cooldownUntil) return;
+      // Bug M1 fix: cooldown is per-fact, not global — only block input for the fact
+      // that triggered the cooldown burst so correct answers on other facts aren't blocked.
+      var currentFactKey = round.currentProblem.table + 'x' + round.currentProblem.second;
+      if (cooldownUntil && Date.now() < cooldownUntil && cooldownFactKey === currentFactKey) return;
       var raw = el.answerInput.value.trim();
       if (!raw) { hideFeedback(); return; }
       var numeric = Number(raw);
@@ -1415,6 +1451,7 @@
         }
         if (wrongBurstCount >= 3) {
           cooldownUntil = nw + 3000;
+          cooldownFactKey = round.currentProblem ? currentFactKey : null;  // Bug M1 fix
           el.cooldownBanner.textContent = 'Slow down! Read carefully.';
           el.cooldownBanner.classList.add('active');
           el.answerInput.disabled = true;
@@ -1428,6 +1465,7 @@
 
     function endCooldown() {
       cooldownUntil = 0;
+      cooldownFactKey = null;  // Bug M1 fix
       hideCooldown();
       if (round) { el.answerInput.disabled = false; el.answerInput.focus(); }
     }
@@ -1442,8 +1480,7 @@
         if (el.personalBestValue) el.personalBestValue.textContent = String(round.bestStreak);
       }
       recordSessionComplete(progress);
-      sessionQuizCount++;
-      if (el.quizCountValue) el.quizCountValue.textContent = String(sessionQuizCount);
+      if (el.quizCountValue) el.quizCountValue.textContent = String(progress.sessionsCompleted || 0);
       var msg = 'Done! ' + round.correct + ' correct. ';
       if (graduated) {
         graduate(progress);
@@ -1714,15 +1751,7 @@
       el.progressGraph.innerHTML = scoreCardHtml + svg;
     }
 
-    function makeTicks(maxValue, targetCount) {
-      var max = Math.max(1, Math.round(maxValue));
-      var step = Math.max(1, Math.ceil(max / targetCount));
-      var ticks = [0];
-      for (var v = step; v < max; v += step) ticks.push(v);
-      if (ticks[ticks.length - 1] !== max) ticks.push(max);
-      return ticks;
-    }
-
+    // v28: makeTicks() removed (was unused dead code)
     // ═══════════════════════════ PROGRESS GRID ═══════════════════════════
     function renderProgressGrid() {
       var progress = loadProgress();
@@ -1783,82 +1812,6 @@
       el.progressGrid.innerHTML = html;
     }
 
-    // ═══════════════════════════ TEACHER ═══════════════════════════
-    function showTeacherView() {
-      el.practiceView.classList.add('hidden');
-      el.teacherView.classList.remove('hidden');
-      if (el.teacherTabBtn) el.teacherTabBtn.classList.add('active');
-      renderTeacherGate();
-    }
-
-    function showPracticeView() {
-      el.teacherView.classList.add('hidden');
-      el.practiceView.classList.remove('hidden');
-      if (el.teacherTabBtn) el.teacherTabBtn.classList.remove('active');
-      renderPracticeView();
-    }
-
-    function unlockTeacher() {
-      if (el.teacherPinInput.value.trim() === TEACHER_PIN) {
-        state.teacherUnlocked = true;
-        el.teacherPinInput.value = '';
-        renderTeacherGate();
-        renderSettingsForm();
-      } else {
-        setStatus(el.teacherGateStatus, 'Incorrect PIN.', 'bad');
-        el.teacherPinInput.value = '';
-        el.teacherPinInput.focus();
-      }
-    }
-
-    function renderTeacherGate() {
-      if (state.teacherUnlocked) {
-        el.teacherGate.classList.add('hidden');
-        el.teacherSettings.classList.remove('hidden');
-      } else {
-        el.teacherGate.classList.remove('hidden');
-        el.teacherSettings.classList.add('hidden');
-        el.teacherGateStatus.textContent = '';
-        el.teacherGateStatus.className = 'status-text';
-      }
-    }
-
-    function renderSettingsForm() {
-      var s = state.settings;
-      el.durationSelect.value = String(s.durationSec);
-      el.reviewMixSelect.value = String(s.reviewMixPct);
-      el.timeoutSecSelect.value = String(s.timeoutSec);
-      el.fluentMsInput.value = String(s.adaptive.fluentMs);
-      el.overdueMsInput.value = String(s.adaptive.overdueMs);
-      el.wrongWeightInput.value = String(s.adaptive.wrongWeight);
-      el.slowWeightInput.value = String(s.adaptive.slowWeight);
-      el.orderChoices.innerHTML = ORDER_OPTIONS.map(function (o) {
-        return '<button type="button" class="choice-chip' + (s.orderMode === o.id ? ' active' : '') + '" data-order="' + o.id + '">' + o.label + '</button>';
-      }).join('');
-    }
-
-    function saveSettingsFromForm() {
-      state.settings.durationSec = Number(el.durationSelect.value) || 60;
-      state.settings.reviewMixPct = Number(el.reviewMixSelect.value) || 30;
-      state.settings.timeoutSec = Number(el.timeoutSecSelect.value) || 12;
-      state.settings.orderMode = el.orderChoices.querySelector('.active') ? el.orderChoices.querySelector('.active').dataset.order : 'mixed';
-      state.settings.adaptive = {
-        fluentMs: clamp(Number(el.fluentMsInput.value) || 3200, 1000, 8000),
-        overdueMs: clamp(Number(el.overdueMsInput.value) || 8000, 1000, 30000),
-        wrongWeight: clamp(Number(el.wrongWeightInput.value) || 1.6, 0.5, 4),
-        slowWeight: clamp(Number(el.slowWeightInput.value) || 0.9, 0.2, 3)
-      };
-      saveSettingsToStorage();
-      setStatus(el.settingsStatus, 'Settings saved.', 'good');
-    }
-
-    function resetSettings() {
-      state.settings = defaultSettings();
-      saveSettingsToStorage();
-      renderSettingsForm();
-      setStatus(el.settingsStatus, 'Settings reset to defaults.', 'warn');
-    }
-
     // ═══════════════════════════ UI ═══════════════════════════
     function updatePracticeHeader() {
       var progress = loadProgress();
@@ -1888,14 +1841,18 @@
       el.signInPanel.classList.add('hidden');
       el.startBtn.disabled = !signedIn;
       if (signedIn) {
+        var uiProgress = loadProgress();
         setStatus(el.roundStatus, 'Ready. Press Start when you\'re ready.', '');
         updatePracticeHeader();
         renderProgressGrid();
         renderProgressGraph();
         updateStreakMeter(round ? round.streak : 0);
         if (el.personalBestValue) {
-          var authPb = loadProgress().allTimeBestStreak || 0;
+          var authPb = uiProgress.allTimeBestStreak || 0;
           el.personalBestValue.textContent = authPb > 0 ? String(authPb) : '-';
+        }
+        if (el.quizCountValue) {
+          el.quizCountValue.textContent = String(uiProgress.sessionsCompleted || 0);
         }
       }
     }
@@ -1910,7 +1867,6 @@
       var uid = getUserId();
       if (!uid || !state.googleUser) return;
       localStorage.removeItem(STORAGE_KEY + uid);
-      sessionQuizCount = 0;
       if (el.quizCountValue) el.quizCountValue.textContent = '0';
       stopRound(false);
       renderAuthUI();
@@ -2024,30 +1980,11 @@
           document.getElementById('resetConfirm').style.display = 'none';
         });
       }
-      if (el.teacherTabBtn) {
-        el.teacherTabBtn.addEventListener('click', function () {
-          if (el.teacherView.classList.contains('hidden')) showTeacherView(); else showPracticeView();
-        });
-      }
-      if (el.backToPracticeBtn) el.backToPracticeBtn.addEventListener('click', showPracticeView);
       if (el.useDemoBtn) el.useDemoBtn.addEventListener('click', function () { state.demoMode = true; state.googleUser = null; renderAuthUI(); });
       el.signOutBtn.addEventListener('click', signOut);
       el.startBtn.addEventListener('click', startRound);
       el.answerInput.addEventListener('input', handleAnswerInput);
       el.timeoutInput.addEventListener('input', handleTimeoutInput);
-      if (el.teacherUnlockBtn) el.teacherUnlockBtn.addEventListener('click', unlockTeacher);
-      if (el.teacherPinInput) el.teacherPinInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') unlockTeacher(); });
-      if (el.saveSettingsBtn) el.saveSettingsBtn.addEventListener('click', saveSettingsFromForm);
-      if (el.resetSettingsBtn) el.resetSettingsBtn.addEventListener('click', resetSettings);
-      if (el.orderChoices) {
-        el.orderChoices.addEventListener('click', function (e) {
-          var btn = e.target.closest('[data-order]');
-          if (!btn) return;
-          state.settings.orderMode = btn.dataset.order;
-          saveSettingsToStorage();
-          renderSettingsForm();
-        });
-      }
       el.keyButtons.forEach(function (btn) {
         btn.addEventListener('click', function () { handleKeypad(btn.dataset.key); });
       });
@@ -2058,6 +1995,8 @@
         } else if (e.key === 'Backspace') {
           if (document.activeElement === el.answerInput || document.activeElement === el.timeoutInput) return;
           handleKeypad('backspace');
+        } else if (e.key === 'D' && e.ctrlKey && e.shiftKey) {
+          toggleSyncDebug();
         } else if (e.key === 'Enter') {
           if (document.activeElement === el.answerInput) handleAnswerInput();
           else if (document.activeElement === el.timeoutInput) handleTimeoutInput();
@@ -2085,64 +2024,124 @@
       if (el.syncStatus) el.syncStatus.style.display = 'none';
     }
 
+    // PHASE 3.3: Token expiry warning — check every 60s, warn 5 min before expiry
+    var tokenExpiryCheckTimer = null;
+    function startTokenExpiryCheck() {
+      if (tokenExpiryCheckTimer) return;
+      tokenExpiryCheckTimer = setInterval(function () {
+        if (!state.googleUser || !driveAccessToken) return;
+        var expiry = Number(localStorage.getItem(DRIVE_TOKEN_EXPIRY_KEY) || 0);
+        var remaining = expiry - Date.now();
+        // Warn if < 5 min remaining — Bug L1 fix: clear the warning after a delay so it
+        // doesn't permanently replace the sync status icon.
+        if (expiry > 0 && remaining > 0 && remaining <= TOKEN_EXPIRY_WARN_MS) {
+          showSyncStatus('&#9888; Drive session expiring soon', true);
+          // Show for 8s then revert to clear (will be shown again next interval if still valid)
+          setTimeout(function () {
+            var cur = el.syncStatus;
+            if (cur && cur.innerHTML.indexOf('expiring soon') !== -1) hideSyncStatus();
+          }, 8000);
+        }
+        // Force refresh if < 1 min remaining.
+        // Don't clear the stored token — leave it in localStorage so
+        // loadDriveTokenFromStorage can serve it during the GSI load race.
+        // The stored token will be overwritten when the new one arrives.
+        if (expiry > 0 && remaining > 0 && remaining <= 60000) {
+          driveAccessToken = null;  // triggers refresh path without clearing storage
+          getOrRefreshDriveToken('sync', syncProgressToDrive, false);
+        }
+      }, 60000);
+    }
+
+    // v28: refreshFromDrive() removed (was unused dead code)
+    function saveDriveTokenToStorage(token) {
+      try {
+        var expiresAt = Date.now() + 55 * 60 * 1000; // conservative 55-min TTL
+        localStorage.setItem(DRIVE_TOKEN_CACHE_KEY, token);
+        localStorage.setItem(DRIVE_TOKEN_EXPIRY_KEY, String(expiresAt));
+      } catch (e) {}
+    }
+
+    function loadDriveTokenFromStorage() {
+      try {
+        var token   = localStorage.getItem(DRIVE_TOKEN_CACHE_KEY);
+        var expiry  = Number(localStorage.getItem(DRIVE_TOKEN_EXPIRY_KEY) || 0);
+        if (token && expiry > Date.now()) return token;
+      } catch (e) {}
+      return null;
+    }
+
+    function clearDriveTokenStorage() {
+      try {
+        localStorage.removeItem(DRIVE_TOKEN_CACHE_KEY);
+        localStorage.removeItem(DRIVE_TOKEN_EXPIRY_KEY);
+      } catch (e) {}
+    }
+
     function initDriveTokenClient() {
       if (!window.google || !google.accounts || !google.accounts.oauth2) return false;
       if (GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID') === 0) return false;
+
       driveTokenClient = google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: 'https://www.googleapis.com/auth/drive.appdata',
-        callback: function(tokenResponse) {
+        callback: function (tokenResponse) {
           if (tokenResponse && tokenResponse.error) {
             driveAccessToken = null;
+            clearDriveTokenStorage();
             showSyncStatus('&#9888; Drive permission needed', true);
-            console.log('FactFlow Drive token response error:', tokenResponse);
             return;
           }
-
           if (tokenResponse && tokenResponse.access_token) {
             driveAccessToken = tokenResponse.access_token;
-            if (driveTokenClient._pendingCallback) {
-              var cb = driveTokenClient._pendingCallback;
-              driveTokenClient._pendingAction = null;
-              driveTokenClient._pendingCallback = null;
-              cb();
-            }
+            saveDriveTokenToStorage(driveAccessToken);
+            // Bug H3 fix: drain ALL pending callbacks instead of overwriting with a single one.
+            // GSI is shared across all auth flows; multiple callers may be queued simultaneously.
+            var pending = driveTokenClient._pendingCallbacks || [];
+            driveTokenClient._pendingCallbacks = [];
+            pending.forEach(function(cb) { try { cb(); } catch (e) {} });
           } else {
             showSyncStatus('&#9888; Drive access denied', true);
-            console.log('FactFlow Drive token response missing access token:', tokenResponse);
           }
         }
       });
       return true;
     }
 
-    function getOrRefreshDriveToken(action, callback, interactive, attempt) {
-      attempt = attempt || 0;
-      if (driveAccessToken) {
+    function getOrRefreshDriveToken(action, callback, interactive) {
+      if (driveAccessToken) { callback(); return; }
+
+      var stored = loadDriveTokenFromStorage();
+      if (stored) {
+        driveAccessToken = stored;
         callback();
         return;
       }
+
+      if (!driveTokenClient) initDriveTokenClient();
       if (!driveTokenClient) {
-        initDriveTokenClient();
-      }
-      if (!driveTokenClient) {
-        if (attempt < 50) {
-          setTimeout(function() {
-            getOrRefreshDriveToken(action, callback, interactive, attempt + 1);
-          }, 200);
-          return;
-        }
-        showSyncStatus('&#9888; Drive not available', true);
-        console.log('FactFlow Drive token client was not available after waiting.');
+        // Bug H5 fix: "Drive not available" was a dead-end with no recovery.
+        // Schedule a retry so the sync eventually recovers if GSI loads later
+        // (e.g. slow network on first load).
+        showSyncStatus('&#9888; Drive not available — retrying...', true);
+        scheduleRetrySync('drive_not_available');
         return;
       }
-      driveTokenClient._pendingAction = action;
-      driveTokenClient._pendingCallback = callback;
+
+      // Bug H3 fix: push to array so multiple concurrent callers all get fulfilled.
+      if (!driveTokenClient._pendingCallbacks) driveTokenClient._pendingCallbacks = [];
+      driveTokenClient._pendingCallbacks.push(callback);
       try {
         driveTokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
       } catch (e) {
+        // P14 fix: save callbacks before clearing so we can still notify callers
+        var failedCallbacks = driveTokenClient._pendingCallbacks || [];
+        driveTokenClient._pendingCallbacks = [];
         showSyncStatus('&#9888; Drive authorization failed', true);
-        console.log('FactFlow Drive token error:', e);
+        // Notify all queued callers so they aren't dropped permanently
+        failedCallbacks.forEach(function(cb) {
+          try { cb(); } catch (_) {}
+        });
       }
     }
 
@@ -2158,15 +2157,26 @@
       );
     }
 
-    function syncProgressToDrive() {
-      if (!state.googleUser || !driveAccessToken) return;
-      if (syncPending) return;
+    function syncProgressToDrive(force) {
+      if (!state.googleUser || !driveAccessToken) { addSyncLog('sync_skip', 'No user or token'); return; }
+      if (!force && !localProgressDirty) { addSyncLog('sync_skip', 'Not dirty'); return; }
+      if (syncPending) { addSyncLog('sync_skip', 'Already syncing'); return; }
       syncPending = true;
+      addSyncLog('sync_start', 'force=' + (!!force) + ' dirty=' + localProgressDirty);
       showSyncStatus('&#8635; Syncing...', false);
 
       var uid = STORAGE_KEY + state.googleUser.sub;
-      var progressJson = localStorage.getItem(uid);
+      // P1 fix: use snapshot from debounce time if available, fall back to localStorage
+      var progressJson = syncPendingSnapshot || localStorage.getItem(uid);
+      syncPendingSnapshot = null; // consume snapshot
       if (!progressJson) { syncPending = false; hideSyncStatus(); return; }
+      var uploadedUpdatedAt = 0;
+      try {
+        var uploadProgress = JSON.parse(progressJson);
+        uploadedUpdatedAt = uploadProgress && uploadProgress.updatedAt ? Date.parse(uploadProgress.updatedAt) : 0;
+      } catch (e) {
+        uploadedUpdatedAt = 0;
+      }
 
       var boundary = 'factflow_boundary_' + Date.now();
       var body = driveMultipartBody(boundary, { name: 'factflow-progress.json', parents: ['appDataFolder'] }, progressJson);
@@ -2176,13 +2186,18 @@
         var url = fileId
           ? 'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=multipart'
           : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+        // P6 fix: send If-Match so Drive rejects concurrent overwrites
+        var uploadHeaders = {
+          'Authorization': 'Bearer ' + driveAccessToken,
+          'Content-Type': 'multipart/related; boundary=' + boundary
+        };
+        if (driveFileEtag) uploadHeaders['If-Match'] = driveFileEtag;
+
         fetch(url, {
           method: method,
-          headers: {
-            'Authorization': 'Bearer ' + driveAccessToken,
-            'Content-Type': 'multipart/related; boundary=' + boundary
-          },
-          body: body
+          headers: uploadHeaders,
+          body: body,
+          keepalive: true
         })
         .then(function(r) {
           if (!r.ok) {
@@ -2190,13 +2205,33 @@
               throw new Error('Drive upload failed: ' + r.status + ' ' + text);
             });
           }
-          return r.json();
+          // Capture ETag for conflict detection on next upload
+          var etag = r.headers.get('ETag') || r.headers.get('etag') || null;
+          return r.json().then(function(data) { return { data: data, etag: etag }; });
         })
-        .then(function(data) {
+        .then(function(result) {
+          var data = result.data;
           syncPending = false;
           if (data.id) {
             driveFileId = data.id;
+            if (result.etag) driveFileEtag = result.etag;
+            var currentRaw = localStorage.getItem(uid);
+            var currentUpdatedAt = 0;
+            try {
+              var currentProgress = currentRaw ? JSON.parse(currentRaw) : null;
+              currentUpdatedAt = currentProgress && currentProgress.updatedAt ? Date.parse(currentProgress.updatedAt) : 0;
+            } catch (e) {
+              currentUpdatedAt = uploadedUpdatedAt;
+            }
+            if (currentUpdatedAt <= uploadedUpdatedAt) {
+              localProgressDirty = false;
+            } else {
+              localProgressDirty = true;
+              clearTimeout(syncDebounceTimer);
+              syncDebounceTimer = setTimeout(function () { triggerDriveSync(); }, 800);
+            }
             showSyncStatus('&#10003; Synced', false);
+            addSyncLog('sync_ok', 'Uploaded, etag=' + (driveFileEtag ? driveFileEtag.slice(0,12) : 'none'));
             setTimeout(hideSyncStatus, 2500);
           } else {
             showSyncStatus('&#9888; Sync failed', true);
@@ -2206,10 +2241,45 @@
         })
         .catch(function(e) {
           syncPending = false;
-          driveAccessToken = null;
-          showSyncStatus('&#9888; Sync error', true);
-          console.log('FactFlow Drive sync error:', e);
-          setTimeout(hideSyncStatus, 3500);
+          var msg = e.message || '';
+          // Bug CORS fix: detect "Failed to fetch" style messages as transient errors
+          var isNetworkError = msg.indexOf('net::') === 0
+            || msg.indexOf('NetworkError') !== -1
+            || msg.indexOf('Failed to fetch') !== -1
+            || msg.indexOf('network') !== -1 && msg.length < 40;
+          if (isNetworkError) {
+            showSyncStatus('&#9888; Network error — retrying...', true);
+            addSyncLog('sync_retry_net', msg.slice(0,80));
+            scheduleRetrySync(msg);
+          } else if (msg.indexOf('401') !== -1 || msg.indexOf('403') !== -1) {
+            // P13 fix: clear stored token to break revoked-token loop
+            showSyncStatus('&#9888; Drive session expired', true);
+            driveAccessToken = null;
+            clearDriveTokenStorage();
+            setTimeout(hideSyncStatus, 3500);
+          } else if (msg.indexOf('412') !== -1) {
+            // v28 fix: 412 Precondition Failed = ETag mismatch.
+            // Pull from Drive FIRST, merge, then re-upload.
+            driveFileEtag = null;
+            showSyncStatus('&#9888; Conflict — resolving...', true);
+            addSyncLog('conflict_412', 'ETag mismatch - pulling from Drive');
+            if (!syncPending) {
+              getOrRefreshDriveToken('conflict', function() {
+                loadProgressFromDrive();
+              }, false);
+            }
+          } else if (msg.indexOf('404') !== -1) {
+            // Bug H6 fix: 404 means the file was deleted on Drive — clear cached
+            // fileId so the next sync re-lists and creates the file fresh.
+            driveFileId = null;
+            showSyncStatus('&#9888; File not found — recreating...', true);
+            addSyncLog('sync_404', 'File not found on Drive, will recreate');
+            scheduleRetrySync(msg);
+          } else {
+            showSyncStatus('&#9888; Sync error', true);
+            console.log('FactFlow Drive sync error:', e);
+            setTimeout(hideSyncStatus, 3500);
+          }
         });
       }
 
@@ -2233,16 +2303,260 @@
         })
         .catch(function(e) {
           syncPending = false;
-          driveAccessToken = null;
-          showSyncStatus('&#9888; Sync lookup failed', true);
-          console.log('FactFlow Drive sync lookup error:', e);
-          setTimeout(hideSyncStatus, 3500);
+          var msg = e.message || '';
+          if (msg.indexOf('net::') === 0 || msg.indexOf('NetworkError') !== -1) {
+            showSyncStatus('&#9888; Network error — retrying...', true);
+            scheduleRetrySync(msg);
+          } else {
+            showSyncStatus('&#9888; Sync lookup failed', true);
+            console.log('FactFlow Drive sync lookup error:', e);
+            setTimeout(hideSyncStatus, 3500);
+          }
         });
       }
     }
 
+    // ═══════════════════════════ SMART MERGE ═══════════════════════════
+    function smartMergeProgress(driveProgress, localProgress) {
+      // Smart three-way merge: compare fact-by-fact, not just session counts
+      // PHASE 1: Critical fixes to prevent data loss
+      if (!localProgress) return driveProgress;
+      
+      var merged = JSON.parse(JSON.stringify(driveProgress)); // Clone drive data
+
+      // Bug C2 fix: if Drive returned a corrupt file (factStats missing or null),
+      // the clone has no factStats. Initialise it so the merge loop can still run.
+      merged.factStats = merged.factStats || {};
+
+      // PHASE 1.1 & 1.2: Merge factStats individually - two-pass to catch all facts
+      if (localProgress.factStats && merged.factStats) {
+        // First pass: merge facts that exist in BOTH local and drive
+        for (var key in localProgress.factStats) {
+          if (merged.factStats[key]) {
+            // Fact exists on both - merge intelligently
+            var driveStats = merged.factStats[key];
+            var localStats = localProgress.factStats[key];
+            
+            // FIX 1.1: SUM attempts instead of Math.max (was losing data!)
+            // Bug C4 fix: capture original drive attempts BEFORE modifying shown, so the
+            // weighted-average calculation below uses the correct pre-merge count.
+            var originalDriveShown = (driveStats.shown || 0);
+            driveStats.shown = (driveStats.shown || 0) + (localStats.shown || 0);
+            driveStats.correct = (driveStats.correct || 0) + (localStats.correct || 0);
+            driveStats.incorrect = (driveStats.incorrect || 0) + (localStats.incorrect || 0);
+            driveStats.timeouts = (driveStats.timeouts || 0) + (localStats.timeouts || 0);
+
+            // Recalculate average response time weighted by attempts (with NaN safety)
+            var localAttempts = (localStats.shown || 0);
+            if (localAttempts > 0) {
+              var driveAvg = parseFloat(driveStats.avgMs) || 0;
+              var localAvg = parseFloat(localStats.avgMs) || 0;
+              // Bug C4 fix: use the captured original count, not the already-incremented one
+              var driveAttempts = originalDriveShown || 0;
+              var totalAttempts = driveAttempts + localAttempts;
+              if (totalAttempts > 0 && !isNaN(driveAvg) && !isNaN(localAvg)) {
+                driveStats.avgMs = Math.round(
+                  ((driveAvg * driveAttempts) + (localAvg * localAttempts)) / totalAttempts
+                );
+              } else if (!isNaN(localAvg)) {
+                driveStats.avgMs = localAvg;
+              }
+            }
+            
+            // v28: merge derived performance state fields
+            driveStats.fastStreak = Math.max(driveStats.fastStreak || 0, localStats.fastStreak || 0);
+            driveStats.slowOrWrongCount = Math.max(driveStats.slowOrWrongCount || 0, localStats.slowOrWrongCount || 0);
+            driveStats.cooldownUntil = Math.max(driveStats.cooldownUntil || 0, localStats.cooldownUntil || 0);
+            if ((localStats.lastSeenTs || 0) >= (driveStats.lastSeenTs || 0) && localStats.lastResponseMs != null) {
+              driveStats.lastResponseMs = localStats.lastResponseMs;
+            } else if (driveStats.lastResponseMs == null && localStats.lastResponseMs != null) {
+              driveStats.lastResponseMs = localStats.lastResponseMs;
+            }
+
+            // Merge recent attempts - keep most recent 12
+            // P9 fix: interleave drive+local entries when timestamps are close (clock skew).
+            var driveRec = (driveStats.recent || []).slice();
+            var localRec = (localStats.recent || []).slice();
+            var clockSkewMs = 5000;
+            var mergedRec = [];
+            var dri = 0, lri = 0;
+            while (dri < driveRec.length && lri < localRec.length) {
+              var dT = driveRec[dri].at || 0;
+              var lT = localRec[lri].at || 0;
+              if (Math.abs(dT - lT) <= clockSkewMs) {
+                mergedRec.push(driveRec[dri++]);
+                mergedRec.push(localRec[lri++]);
+              } else if (dT > lT) {
+                mergedRec.push(driveRec[dri++]);
+              } else {
+                mergedRec.push(localRec[lri++]);
+              }
+            }
+            while (dri < driveRec.length) mergedRec.push(driveRec[dri++]);
+            while (lri < localRec.length) mergedRec.push(localRec[lri++]);
+            driveStats.recent = mergedRec.slice(0, 12);
+            
+            // Use the most recent timestamp
+            if ((localStats.lastSeenTs || 0) > (driveStats.lastSeenTs || 0)) {
+              driveStats.lastSeen = localStats.lastSeen;
+              driveStats.lastSeenTs = localStats.lastSeenTs;
+            }
+          } else {
+            // FIX 1.2: Fact only exists locally, keep it (new data from this device)
+            merged.factStats[key] = JSON.parse(JSON.stringify(localProgress.factStats[key]));
+          }
+        }
+        
+        // Second pass: keep all Drive facts that don't exist in local (data from other device)
+        // This was missing! If Drive has facts local hasn't synced yet, they're now preserved
+        for (var dkey in merged.factStats) {
+          if (!localProgress.factStats || !localProgress.factStats[dkey]) {
+            // Keep the Drive fact unchanged (it's from another device)
+          }
+        }
+      }
+      
+      // FIX 1.3 & 1.4: Merge session history properly
+      // P10 fix: use composite key so simultaneous quizzes on two devices aren't lost
+      merged.sessionHistory = merged.sessionHistory || [];
+      if (localProgress.sessionHistory) {
+        var sessionMap = {};
+        merged.sessionHistory.forEach(function(s) {
+          var key = 'sess_' + (s.session || 0);
+          if (!sessionMap[key]) sessionMap[key] = [];
+          sessionMap[key].push(s);
+        });
+        (localProgress.sessionHistory || []).forEach(function(s) {
+          var key = 'sess_' + (s.session || 0);
+          if (!sessionMap[key]) {
+            sessionMap[key] = [s];
+          } else {
+            var exists = sessionMap[key].some(function(existing) {
+              return existing.at === s.at && existing.fpm === s.fpm;
+            });
+            if (!exists) sessionMap[key].push(s);
+          }
+        });
+        // Flatten: keep the best entry per session number (highest masteryScore)
+        merged.sessionHistory = Object.keys(sessionMap).map(function(k) {
+          var entries = sessionMap[k];
+          if (entries.length === 1) return entries[0];
+          return entries.reduce(function(best, e) {
+            return (e.masteryScore || 0) > (best.masteryScore || 0) ? e : best;
+          });
+        }).sort(function(a, b) {
+          return (a.session || 0) - (b.session || 0);
+        });
+      }
+      
+      // P11 fix: sessionsCompleted = actual merged history length
+      // Avoid permanent mismatch when dedup removes sessions
+      merged.sessionsCompleted = Math.max(
+        merged.sessionHistory.length,
+        Math.max((merged.sessionsCompleted || 0), (localProgress.sessionsCompleted || 0))
+      );
+      // If history was deduped, ensure sessionsCompleted doesn't exceed it
+      if (merged.sessionsCompleted > merged.sessionHistory.length) {
+        // Reassign session numbers sequentially to close the gap
+        merged.sessionHistory.forEach(function(s, i) {
+          s.session = i + 1;
+        });
+        merged.sessionsCompleted = merged.sessionHistory.length;
+      }
+      
+      merged.allTimeBestStreak = Math.max(
+        (merged.allTimeBestStreak || 0),
+        (localProgress.allTimeBestStreak || 0)
+      );
+      
+      // P12 fix: table progression — take the higher table ONLY if the user
+      // has actually graduated (i.e., the lower table's facts are all mastered).
+      // Otherwise keep the lower table to avoid skipping ahead unprepared.
+      var driveTable = merged.currentTable || STARTING_TABLE;
+      var localTable = localProgress.currentTable || STARTING_TABLE;
+      if (driveTable !== localTable) {
+        var lowerTable = Math.min(driveTable, localTable);
+        var higherTable = Math.max(driveTable, localTable);
+        // Check if all facts in lowerTable are mastered (from the higher-table device's perspective)
+        var lowerTableReady = ALL_SECONDS.every(function(sec) {
+          var s = merged.factStats[lowerTable + 'x' + sec];
+          return s && s.shown >= 4 && s.mastery >= 0.80;
+        });
+        merged.currentTable = lowerTableReady ? higherTable : lowerTable;
+      } else {
+        merged.currentTable = driveTable;
+      }
+      
+      // Always use the most recent update timestamp
+      if ((localProgress.updatedAt || '0') > (merged.updatedAt || '0')) {
+        merged.updatedAt = localProgress.updatedAt;
+      }
+      
+      // FIX 1.5 (Bug C3 fix): CRITICAL - Recalculate mastery after merge.
+      // Bug C3: the original used a hardcoded 5000ms threshold which diverges from
+      // the live fluentMs-based formula in updateFactStats(), causing incorrect
+      // progress-grid colours after any Drive sync. Now matches the live formula.
+      if (merged.factStats) {
+        var a = state.settings.adaptive;
+        var fluent = a.fluentMs;
+        for (var mkey in merged.factStats) {
+          var s = merged.factStats[mkey];
+          if (s && s.correct !== undefined && s.shown !== undefined && s.shown > 0) {
+            var baseAcc = s.correct / s.shown;
+            var recentSlice = (s.recent || []).slice(-6);
+            var recentCorrect = recentSlice.filter(function(r) { return r.isCorrect && !r.timeout; }).length;
+            var recentCount = recentSlice.length;
+            var recentAcc = recentCount > 0 ? recentCorrect / recentCount : baseAcc;
+            var recentSpeed = recentCount > 0
+              ? recentSlice.reduce(function(sum, r) { return sum + r.responseMs; }, 0) / recentCount
+              : (s.avgMs || 0);
+            var speedScore = recentSpeed <= fluent * 0.78 ? 1
+              : recentSpeed >= fluent * 2.2 ? 0.15
+              : 1 - ((recentSpeed - fluent * 0.78) / (fluent * 1.42)) * 0.85;
+            var consistency = recentCount > 0
+              ? recentSlice.reduce(function(sum, r) { return sum + (r.isCorrect ? (r.responseMs <= 3500 ? 1 : 0.6) : 0); }, 0) / recentCount
+              : 0;
+            s.mastery = Math.max(0, Math.min(1,
+              (baseAcc * 0.35) + (recentAcc * 0.30) + (speedScore * 0.20) + (consistency * 0.15)
+            ));
+          }
+        }
+      }
+      
+      // v28: merge settings from both sides
+      if (localProgress.settings || merged.settings) {
+        var ls = localProgress.settings || {};
+        var ms = merged.settings || {};
+        merged.settings = {
+          durationSec: Math.max(ls.durationSec || ms.durationSec || 60, 30),
+          orderMode: ls.orderMode || ms.orderMode || 'mixed',
+          timeoutSec: Math.min(ls.timeoutSec || ms.timeoutSec || 12, 30),
+          reviewMixPct: Math.min(ls.reviewMixPct || ms.reviewMixPct || 30, 100),
+          adaptive: {
+            fluentMs: Math.min(ls.adaptive && ls.adaptive.fluentMs || ms.adaptive && ms.adaptive.fluentMs || 3200, 10000),
+            overdueMs: Math.max(ls.adaptive && ls.adaptive.overdueMs || ms.adaptive && ms.adaptive.overdueMs || 8000, 2000),
+            wrongWeight: Math.min(ls.adaptive && ls.adaptive.wrongWeight || ms.adaptive && ms.adaptive.wrongWeight || 1.6, 5),
+            slowWeight: Math.min(ls.adaptive && ls.adaptive.slowWeight || ms.adaptive && ms.adaptive.slowWeight || 0.9, 3)
+          }
+        };
+      }
+
+      // Bug M3 fix: apply the 200-entry cap to the merged sessionHistory so Drive
+      // doesn't accumulate unbounded history across multiple devices/sessions.
+      if (merged.sessionHistory && merged.sessionHistory.length > 200) {
+        merged.sessionHistory = merged.sessionHistory.slice(-200);
+      }
+
+      return merged;
+    }
+
     function loadProgressFromDrive() {
-      if (!state.googleUser || !driveAccessToken) return;
+      // P15 fix: don't pull from Drive mid-round
+      if (round) { addSyncLog('load_skip', 'Mid-round'); return; }
+      if (!state.googleUser || !driveAccessToken) { addSyncLog('load_skip', 'No user/token'); return; }
+      // v28: guard against concurrent load + upload race
+      if (syncPending) { addSyncLog('load_defer', 'Sync in progress, deferring load'); return; }
+      addSyncLog('load_start', 'Pulling from Drive');
       showSyncStatus('&#8635; Loading...', false);
       fetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'factflow-progress.json'&fields=files(id)", {
         headers: { 'Authorization': 'Bearer ' + driveAccessToken }
@@ -2250,7 +2564,9 @@
       .then(function(r) {
         if (!r.ok) {
           return r.text().then(function(text) {
-            throw new Error('Drive list failed: ' + r.status + ' ' + text);
+            var err = new Error('Drive list failed: ' + r.status + ' ' + text);
+            err._httpStatus = r.status;
+            throw err;
           });
         }
         return r.json();
@@ -2258,47 +2574,134 @@
       .then(function(data) {
         if (!data.files || data.files.length === 0) {
           hideSyncStatus();
-          syncProgressToDrive();
+          addSyncLog('load_empty', 'No Drive file found, uploading local data');
+          syncProgressToDrive(true);
           return null;
         }
         driveFileId = data.files[0].id;
+        // P6 fix: send If-None-Match so unchanged files return 304 (skip merge)
+        var mediaHeaders = { 'Authorization': 'Bearer ' + driveAccessToken };
+        if (driveFileEtag) mediaHeaders['If-None-Match'] = driveFileEtag;
         return fetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media', {
-          headers: { 'Authorization': 'Bearer ' + driveAccessToken }
+          headers: mediaHeaders
         });
       })
       .then(function(r) {
         if (!r) return null;
+        // P6 fix: 304 means file unchanged since last pull — skip merge entirely
+        if (r.status === 304) {
+          hideSyncStatus();
+          localProgressDirty = false;
+          addSyncLog('load_304', 'File unchanged, skipping merge');
+          return null;
+        }
         if (!r.ok) {
           return r.text().then(function(text) {
-            throw new Error('Drive media load failed: ' + r.status + ' ' + text);
+            var err = new Error('Drive media load failed: ' + r.status + ' ' + text);
+            err._httpStatus = r.status;
+            throw err;
           });
         }
-        return r.json();
+        // Capture ETag for conflict detection on next push
+        var dletag = r.headers.get('ETag') || r.headers.get('etag') || null;
+        return r.json().then(function(data) { return { data: data, etag: dletag }; });
       })
-      .then(function(driveProgress) {
-        if (!driveProgress) return;
+      .then(function(result) {
+        // result is null on 304 Not Modified — nothing to merge, already cleared flags
+        if (!result) return;
+        var driveProgress = result.data;
+        if (result.etag) driveFileEtag = result.etag;
         var uid = STORAGE_KEY + state.googleUser.sub;
         var localRaw = localStorage.getItem(uid);
         var localProgress = localRaw ? JSON.parse(localRaw) : null;
-        var localCount = localProgress ? (localProgress.sessionsCompleted || 0) : 0;
-        var driveCount = driveProgress.sessionsCompleted || 0;
-        var localUpdated = localProgress && localProgress.updatedAt ? Date.parse(localProgress.updatedAt) : 0;
-        var driveUpdated = driveProgress.updatedAt ? Date.parse(driveProgress.updatedAt) : 0;
-        if (!localProgress || driveCount > localCount || (driveCount === localCount && driveUpdated >= localUpdated)) {
-          localStorage.setItem(uid, JSON.stringify(driveProgress));
+        
+        // Use smart merge instead of simple comparison
+        var mergedProgress = smartMergeProgress(driveProgress, localProgress);
+        localStorage.setItem(uid, JSON.stringify(mergedProgress));
+        // v28: apply merged settings from Drive
+        if (mergedProgress.settings) {
+          state.settings = {
+            durationSec: mergedProgress.settings.durationSec || 60,
+            orderMode: mergedProgress.settings.orderMode || 'mixed',
+            timeoutSec: mergedProgress.settings.timeoutSec || 12,
+            reviewMixPct: mergedProgress.settings.reviewMixPct || 30,
+            adaptive: {
+              fluentMs:    (mergedProgress.settings.adaptive && mergedProgress.settings.adaptive.fluentMs) || 3200,
+              overdueMs:   (mergedProgress.settings.adaptive && mergedProgress.settings.adaptive.overdueMs) || 8000,
+              wrongWeight: (mergedProgress.settings.adaptive && mergedProgress.settings.adaptive.wrongWeight) || 1.6,
+              slowWeight:  (mergedProgress.settings.adaptive && mergedProgress.settings.adaptive.slowWeight) || 0.9
+            }
+          };
+          saveSettingsToStorage();
         }
+        // P7 fix: clear pending debounce/push so we don't echo merged data back to Drive
+        clearTimeout(syncDebounceTimer);
+        syncDebounceTimer = null;
+        syncPendingSnapshot = null;
         hideSyncStatus();
+        localProgressDirty = false;
+        addSyncLog('load_merge_done', 'Merged state applied to localStorage');
         renderProgressGrid();
         renderProgressGraph();
         renderAuthUI();
       })
       .catch(function(e) {
-        driveAccessToken = null;
-        hideSyncStatus();
-        showSyncStatus('&#9888; Drive load failed', true);
-        console.log('FactFlow Drive load error:', e);
-        setTimeout(hideSyncStatus, 3500);
+        var msg = e.message || '';
+        var statusCode = e._httpStatus || 0;
+        if (msg.indexOf('net::') === 0 || msg.indexOf('NetworkError') !== -1 || isTransientError(statusCode, msg)) {
+          showSyncStatus('&#9888; Network error — retrying...', true);
+          scheduleRetrySync(msg);
+        } else if (msg.indexOf('401') !== -1 || msg.indexOf('403') !== -1) {
+          // P13 fix: clear stored token so we don't loop on a revoked token
+          driveAccessToken = null;
+          clearDriveTokenStorage();
+          hideSyncStatus();
+          showSyncStatus('&#9888; Drive session expired — re-authorize', true);
+          setTimeout(hideSyncStatus, 4000);
+        } else {
+          driveAccessToken = null;
+          clearDriveTokenStorage(); // P8 fix: also clear stored token on errors
+          hideSyncStatus();
+          showSyncStatus('&#9888; Drive load failed', true);
+          console.log('FactFlow Drive load error:', e);
+          setTimeout(hideSyncStatus, 3500);
+        }
       });
+    }
+
+    // PHASE 2.2: Retry mechanism with exponential backoff
+    function isTransientError(statusCode, errorMessage) {
+      // D4 fix: actually use statusCode. Network errors (no statusCode) are always transient.
+      if (!statusCode) return true; // Network error (no response received)
+      return statusCode >= 500 || statusCode === 408 || statusCode === 429;
+    }
+
+    function scheduleRetrySync(reason) {
+      if (!state.googleUser || !driveAccessToken) return;
+
+      var retryCount = (syncRetryEntry && syncRetryEntry.retryCount || 0) + 1;
+
+      if (retryCount > MAX_SYNC_RETRIES) {
+        showSyncStatus('&#9888; Sync failed repeatedly', true);
+        addSyncLog('sync_give_up', 'Max retries (' + MAX_SYNC_RETRIES + ') reached');
+        syncRetryEntry = null;
+        if (syncRetryTimer) { clearTimeout(syncRetryTimer); syncRetryTimer = null; }
+        setTimeout(hideSyncStatus, 3500);
+        return;
+      }
+
+      syncRetryEntry = {
+        timestamp: Date.now(),
+        retryCount: retryCount
+      };
+      var backoffMs = SYNC_RETRY_BACKOFF_BASE_MS * Math.pow(2, retryCount - 1);
+
+      if (syncRetryTimer) clearTimeout(syncRetryTimer);
+      showSyncStatus('&#8635; Retrying in ' + Math.round(backoffMs / 1000) + 's...', false);
+      syncRetryTimer = setTimeout(function() {
+        syncRetryTimer = null;
+        triggerDriveSync();
+      }, backoffMs);
     }
 
     function triggerDriveSync() {
@@ -2310,32 +2713,181 @@
       }
     }
 
+    // ═══════════════════════════ PERIODIC SYNC ═══════════════════════════
+    var syncCheckInterval = null;
+    var SYNC_CHECK_INTERVAL_MS = 8000; // Check every 8 seconds during active practice
+    
+    function startPeriodicSync() {
+      if (syncCheckInterval) return; // Already running
+      if (!state.googleUser || !driveAccessToken) return;
+      syncCheckInterval = setInterval(function() {
+        if (state.googleUser && driveAccessToken && !round) {
+          getOrRefreshDriveToken('periodic', function() {
+            loadProgressFromDrive();
+            if (localProgressDirty) {
+              addSyncLog('periodic_push', 'Pushing dirty local state');
+              syncProgressToDrive();
+            }
+          }, false);
+        }
+      }, SYNC_CHECK_INTERVAL_MS);
+    }
+    
+    function stopPeriodicSync() {
+      if (syncCheckInterval) {
+        clearInterval(syncCheckInterval);
+        syncCheckInterval = null;
+      }
+    }
+
     function init() {
       cacheDom();
       initTheme();
       bindEvents();
-      // Restore Google session from localStorage if available
+
+      // Restore Google session if present
       try {
         var storedUser = localStorage.getItem('factflow-google-user');
         if (storedUser) {
           var u = JSON.parse(storedUser);
           if (u && u.sub) {
             state.googleUser = u;
-            state.demoMode = false;
+            state.demoMode   = false;
           }
         }
-      } catch(e) {}
-      // If session restored, silently request Drive token and load latest progress
+      } catch (e) {}
+
+      // v28: Restore sync debug mode from previous session
+      try { if (localStorage.getItem('factflow-sync-debug')) { syncDebug = true; } } catch(e) {}
+      if (syncDebug) { renderSyncDebugPanel(); document.getElementById('syncDebugPanel').classList.remove('hidden'); }
+
+      // Initialize Google Sign-In UI (but don't prompt yet)
+      initGoogleSignIn();
+      
+      // If we already know the user, restore Drive token from storage and pull latest data
       if (state.googleUser) {
-        setTimeout(function() {
+        renderAuthUI();
+        var storedToken = loadDriveTokenFromStorage();
+        if (storedToken) {
+          driveAccessToken = storedToken;
+          initDriveTokenClient();           // ready for future refreshes
+          loadProgressFromDrive();          // PULL latest from Drive immediately
+          startPeriodicSync();              // Resume periodic sync
+          startTokenExpiryCheck();          // Bug H1 fix: was missing on session restore
+        } else {
           initDriveTokenClient();
           getOrRefreshDriveToken('load', loadProgressFromDrive, false);
-        }, 800);
+        }
+      } else {
+        renderAuthUI();
       }
-      initGoogleSignIn();
-      renderAuthUI();
+
+      // D5 fix: restore retry queue from localStorage on page load
+      try {
+        var savedRetry = localStorage.getItem('factflow-sync-queue');
+        if (savedRetry) {
+          var rq = JSON.parse(savedRetry);
+          if (rq && rq.length) {
+            syncRetryEntry = rq[0];
+            addSyncLog('init_restore_retry', 'Restored retry queue (attempt ' + (syncRetryEntry.retryCount || 0) + ')');
+            if (state.googleUser && driveAccessToken && syncRetryEntry && syncRetryEntry.retryCount <= MAX_SYNC_RETRIES) {
+              var backoffMs = SYNC_RETRY_BACKOFF_BASE_MS * Math.pow(2, syncRetryEntry.retryCount - 1);
+              syncRetryTimer = setTimeout(function() {
+                syncRetryTimer = null;
+                triggerDriveSync();
+              }, backoffMs);
+            }
+          }
+        }
+      } catch (e) {}
     }
+
     init();
+
+    // Page-lifecycle sync — P3 fix: single unified handler to prevent double-upload
+    // Both pagehide and beforeunload may fire (order varies by browser),
+    // so a single guard variable ensures only one upload starts.
+    function pageUnloadSync() {
+      if (state.googleUser && driveAccessToken && !syncPending && !pageUnloadSyncing) {
+        pageUnloadSyncing = true;
+        syncProgressToDrive();
+      }
+    }
+    window.addEventListener('pagehide', pageUnloadSync);
+    window.addEventListener('beforeunload', pageUnloadSync);
+
+    var visibilityDebounceTimer = null;
+    document.addEventListener('visibilitychange', function () {
+      // v28 fix: use unified pageUnloadSyncing guard
+      if (document.visibilityState === 'hidden' && state.googleUser && driveAccessToken && !syncPending && !pageUnloadSyncing) {
+        pageUnloadSyncing = true;
+        syncProgressToDrive();
+        stopPeriodicSync();
+      }
+      // Bug M2 fix: debounce the visible handler to prevent rapid alt-tab from
+      // firing multiple concurrent loadProgressFromDrive calls that race on localStorage.
+      if (document.visibilityState === 'visible' && state.googleUser) {
+        startPeriodicSync();
+        clearTimeout(visibilityDebounceTimer);
+        visibilityDebounceTimer = setTimeout(function () {
+          visibilityDebounceTimer = null;
+          getOrRefreshDriveToken('refresh', loadProgressFromDrive, false);
+        }, 500);
+      }
+    });
+
+    // PHASE 4.1 & 3.2: Online/offline detection — pause sync when offline, resume + retry when back online
+    window.addEventListener('offline', function () {
+      stopPeriodicSync();
+      addSyncLog('offline', 'Going offline - periodic sync paused');
+      showSyncStatus('&#9729; Offline — data saved locally', false);
+      try { localStorage.setItem('factflow-sync-queue', JSON.stringify(syncRetryEntry ? [syncRetryEntry] : [])); } catch (e) {}
+    });
+    window.addEventListener('online', function () {
+      addSyncLog('online', 'Back online - resuming sync');
+      showSyncStatus('&#9711; Back online — syncing...', false);
+      startPeriodicSync();
+      try {
+        var savedQueue = localStorage.getItem('factflow-sync-queue');
+        if (savedQueue) { var q = JSON.parse(savedQueue); syncRetryEntry = (q && q.length) ? q[0] : null; }
+      } catch (e) {}
+      if (state.googleUser) triggerDriveSync();
+    });
+
+    // bfcache recovery
+    window.addEventListener('pageshow', function (event) {
+      if (event.persisted && state.googleUser) {
+        var stored = loadDriveTokenFromStorage();
+        if (stored) driveAccessToken = stored;
+        startTokenExpiryCheck();
+        loadProgressFromDrive();
+      }
+    });
+
+    // Cross-tab sync: when another tab on the same device modifies localStorage.
+    // v28 fix: push merged result to Drive so it propagates to other devices.
+    window.addEventListener('storage', function (e) {
+      if (!state.googleUser || !driveAccessToken) return;
+      var ourKey = STORAGE_KEY + state.googleUser.sub;
+      if (e.key === ourKey && e.newValue) {
+        try {
+          var otherProgress = JSON.parse(e.newValue);
+          var uid = STORAGE_KEY + state.googleUser.sub;
+          var localRaw = localStorage.getItem(uid);
+          var localProgress = localRaw ? JSON.parse(localRaw) : null;
+          var merged = smartMergeProgress(otherProgress, localProgress);
+          localStorage.setItem(uid, JSON.stringify(merged));
+          localProgressDirty = true;
+          addSyncLog('cross_tab_merge', 'Merged data from another tab, pushing to Drive');
+          syncProgressToDrive();
+          renderProgressGrid();
+          renderProgressGraph();
+          renderAuthUI();
+        } catch (ex) {
+          addSyncLog('cross_tab_error', 'Storage event merge failed: ' + (ex.message || ex));
+        }
+      }
+    });
   })();
   
     // --- Graph show-all-dates toggle ---
