@@ -1465,7 +1465,7 @@
       var fpm = round ? Math.round((round.correct / (round.durationSec / 60)) * 10) / 10 : 0;
       var progressScore = levelsPassed / 121;
       var speedScore = Math.min(1, fpm / 20);
-      var masteryScore = Math.round(100 * (0.45 * accuracy + 0.25 * speedScore + 0.30 * progressScore));
+      var masteryScore = Math.round(100 * (0.40 * accuracy + 0.35 * speedScore + 0.25 * progressScore));
       progress.sessionHistory.push({
         session: progress.sessionsCompleted,
         levelsPassed: levelsPassed,
