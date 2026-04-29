@@ -773,7 +773,7 @@
     'use strict';
 
     // ═══════════════════════════ CONFIG ═══════════════════════════
-    var GOOGLE_CLIENT_ID = '220590044784-6bohsjumu2r67ds92lhmfdubhh3qen5i.apps.googleusercontent.com';
+    var GOOGLE_CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';
     var STORAGE_KEY    = 'factflow-progress-';  // localStorage key prefix
     var STARTING_TABLE = 2;   // First times table (default: 2)
     var MAX_TABLE      = 12;  // Last times table  (default: 12)
@@ -1186,7 +1186,8 @@
         setTimeout(function () { waitForGis(cb, n + 1); }, 200);
       }
       waitForGis(function () {
-        google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleSignIn, auto_select: false });
+        google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleSignIn, auto_select: true, cancel_on_tap_outside: false });
+        if (!state.googleUser) { google.accounts.id.prompt(); }
         google.accounts.id.renderButton(btn, { theme: 'outline', size: 'large', type: 'standard', text: 'signin_with' });
       });
     }
