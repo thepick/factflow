@@ -574,6 +574,7 @@
             <div class="name" id="userName"></div>
             <div class="subtle" id="userEmail"></div>
           </div>
+          <span id="syncStatus" style="font-size:0.62rem;opacity:0.8;white-space:nowrap;display:none;align-items:center;gap:3px;color:rgba(255,255,255,0.88)"></span>
           <button type="button" class="btn-ghost tiny" id="signOutBtn">Sign out</button>
         </div>
 
@@ -765,6 +766,8 @@
     </section>
   </div>
 
+  <div class="levelup-toast" id="levelupToast" aria-live="polite"></div>
+  <div class="graph-tooltip" id="graphTooltip"></div>
   <script>
   (function () {
     'use strict';
@@ -811,6 +814,10 @@
     })();
     var justGraduated = false; // Show banner after round ends
     var graphShowAllLabels = false; // Toggle: show all x-axis date labels
+    var driveTokenClient  = null;  // Google OAuth2 token client for Drive API
+    var driveAccessToken  = null;  // In-memory access token (expires in ~1hr)
+    var driveFileId       = null;  // Cached Drive file ID for factflow-progress.json
+    var syncPending       = false; // Prevents overlapping sync calls
     var sessionQuizCount = 0;    // Resets each page load
     var startBtnCooldown = null; // Post-round delay interval
 
@@ -830,7 +837,8 @@
       el.userPic = document.getElementById('userPic');
       el.userName = document.getElementById('userName');
       el.userEmail = document.getElementById('userEmail');
-      el.signOutBtn = document.getElementById('signOutBtn');
+      el.signOutBtn  = document.getElementById('signOutBtn');
+      el.syncStatus  = document.getElementById('syncStatus');
       el.graduateBanner = document.getElementById('graduateBanner');
       el.practiceLayout = document.getElementById('practiceLayout');
       el.practiceTitle = document.getElementById('practiceTitle');
@@ -1200,6 +1208,8 @@
             localStorage.setItem(googleKey, demoData);
           }
         } catch(e) {}
+        initDriveTokenClient();
+        getOrRefreshDriveToken('load', loadProgressFromDrive);
         renderAuthUI();
       } catch (e) {
         setStatus(el.roundStatus, 'Sign-in failed. Try again.', 'bad');
@@ -1430,6 +1440,7 @@
         if (el.personalBestValue) el.personalBestValue.textContent = String(round.bestStreak);
       }
       recordSessionComplete(progress);
+      triggerDriveSync();
       sessionQuizCount++;
       if (el.quizCountValue) el.quizCountValue.textContent = String(sessionQuizCount);
       var msg = 'Done! ' + round.correct + ' correct. ';
@@ -2054,6 +2065,192 @@
     }
 
     // ═══════════════════════════ INIT ═══════════════════════════
+    
+    // ═══════════════════════════════════════════════════════════
+    //  GOOGLE DRIVE SYNC
+    //  Saves progress as factflow-progress.json in Drive appDataFolder.
+    //  Uses google.accounts.oauth2 (same GSI script, no extra CDN needed).
+    // ═══════════════════════════════════════════════════════════
+
+    function showSyncStatus(msg, isError) {
+      var s = el.syncStatus;
+      if (!s) return;
+      s.style.display = 'inline-flex';
+      s.style.color = isError ? 'rgba(255,160,160,0.95)' : 'rgba(255,255,255,0.88)';
+      s.innerHTML = msg;
+    }
+    function hideSyncStatus() {
+      if (el.syncStatus) el.syncStatus.style.display = 'none';
+    }
+
+    function initDriveTokenClient() {
+      if (!window.google || !google.accounts || !google.accounts.oauth2) return;
+      if (GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID') === 0) return;
+      driveTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/drive.appdata',
+        prompt: '',
+        callback: function(tokenResponse) {
+          if (tokenResponse && tokenResponse.access_token) {
+            driveAccessToken = tokenResponse.access_token;
+            // After obtaining token: load from Drive on first sign-in, or sync after session
+            if (driveTokenClient._pendingAction === 'load') {
+              driveTokenClient._pendingAction = null;
+              loadProgressFromDrive();
+            } else if (driveTokenClient._pendingAction === 'sync') {
+              driveTokenClient._pendingAction = null;
+              syncProgressToDrive();
+            }
+          } else {
+            showSyncStatus('&#9888; Drive access denied', true);
+          }
+        }
+      });
+    }
+
+    function getOrRefreshDriveToken(action, callback) {
+      if (driveAccessToken) {
+        callback();
+        return;
+      }
+      if (!driveTokenClient) {
+        initDriveTokenClient();
+      }
+      if (!driveTokenClient) {
+        showSyncStatus('&#9888; Drive not available', true);
+        return;
+      }
+      driveTokenClient._pendingAction = action;
+      driveTokenClient._pendingCallback = callback;
+      driveTokenClient.requestAccessToken({ prompt: '' });
+    }
+
+    function driveMultipartBody(boundary, meta, content) {
+      return (
+        '--' + boundary + '\r\n' +
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+        JSON.stringify(meta) + '\r\n' +
+        '--' + boundary + '\r\n' +
+        'Content-Type: application/json\r\n\r\n' +
+        content + '\r\n' +
+        '--' + boundary + '--'
+      );
+    }
+
+    function syncProgressToDrive() {
+      if (!state.googleUser || !driveAccessToken) return;
+      if (syncPending) return;
+      syncPending = true;
+      showSyncStatus('&#8635; Syncing...', false);
+
+      var uid = STORAGE_KEY + state.googleUser.sub;
+      var progressJson = localStorage.getItem(uid);
+      if (!progressJson) { syncPending = false; hideSyncStatus(); return; }
+
+      var boundary = 'factflow_boundary_' + Date.now();
+      var body = driveMultipartBody(boundary, { name: 'factflow-progress.json', parents: ['appDataFolder'] }, progressJson);
+
+      function doUpload(fileId) {
+        var method = fileId ? 'PATCH' : 'POST';
+        var url = fileId
+          ? 'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=multipart'
+          : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+        fetch(url, {
+          method: method,
+          headers: {
+            'Authorization': 'Bearer ' + driveAccessToken,
+            'Content-Type': 'multipart/related; boundary=' + boundary
+          },
+          body: body
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          syncPending = false;
+          if (data.id) {
+            driveFileId = data.id;
+            showSyncStatus('&#10003; Synced', false);
+            setTimeout(hideSyncStatus, 2500);
+          } else {
+            showSyncStatus('&#9888; Sync failed', true);
+            setTimeout(hideSyncStatus, 3500);
+          }
+        })
+        .catch(function() {
+          syncPending = false;
+          driveAccessToken = null; // Token may have expired - clear it
+          showSyncStatus('&#9888; Sync error', true);
+          setTimeout(hideSyncStatus, 3500);
+        });
+      }
+
+      if (driveFileId) {
+        doUpload(driveFileId);
+      } else {
+        // Find existing file first
+        fetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'factflow-progress.json'&fields=files(id)", {
+          headers: { 'Authorization': 'Bearer ' + driveAccessToken }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          driveFileId = (data.files && data.files.length > 0) ? data.files[0].id : null;
+          doUpload(driveFileId);
+        })
+        .catch(function() {
+          doUpload(null); // Try creating new file anyway
+        });
+      }
+    }
+
+    function loadProgressFromDrive() {
+      if (!state.googleUser || !driveAccessToken) return;
+      showSyncStatus('&#8635; Loading...', false);
+      fetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'factflow-progress.json'&fields=files(id)", {
+        headers: { 'Authorization': 'Bearer ' + driveAccessToken }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.files || data.files.length === 0) {
+          // No Drive data yet - just sync local to Drive
+          hideSyncStatus();
+          syncProgressToDrive();
+          return;
+        }
+        driveFileId = data.files[0].id;
+        return fetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media', {
+          headers: { 'Authorization': 'Bearer ' + driveAccessToken }
+        });
+      })
+      .then(function(r) { if (r) return r.json(); })
+      .then(function(driveProgress) {
+        if (!driveProgress) return;
+        var uid = STORAGE_KEY + state.googleUser.sub;
+        var localRaw = localStorage.getItem(uid);
+        var localProgress = localRaw ? JSON.parse(localRaw) : null;
+        // Use whichever has more sessions (Drive wins on tie)
+        var localCount = localProgress ? (localProgress.sessionsCompleted || 0) : 0;
+        var driveCount = driveProgress.sessionsCompleted || 0;
+        if (driveCount >= localCount) {
+          localStorage.setItem(uid, JSON.stringify(driveProgress));
+        }
+        hideSyncStatus();
+        renderProgressGrid();
+        renderProgressGraph();
+        renderAuthUI();
+      })
+      .catch(function() {
+        hideSyncStatus();
+      });
+    }
+
+    function triggerDriveSync() {
+      if (!state.googleUser) return;
+      if (!driveAccessToken) {
+        getOrRefreshDriveToken('sync', syncProgressToDrive);
+      } else {
+        syncProgressToDrive();
+      }
+    }
+
     function init() {
       cacheDom();
       initTheme();
@@ -2069,6 +2266,13 @@
           }
         }
       } catch(e) {}
+      // If session restored, silently request Drive token and load latest progress
+      if (state.googleUser) {
+        setTimeout(function() {
+          initDriveTokenClient();
+          getOrRefreshDriveToken('load', loadProgressFromDrive);
+        }, 800);
+      }
       initGoogleSignIn();
       renderAuthUI();
     }
@@ -2144,7 +2348,5 @@
     })();
 
   </script>
-  <div class="levelup-toast" id="levelupToast" aria-live="polite"></div>
-  <div class="graph-tooltip" id="graphTooltip"></div>
 </body>
 </html>
