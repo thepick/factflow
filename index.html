@@ -754,6 +754,7 @@
     var graphShowAllLabels = false; // Toggle: show all x-axis date labels
     var driveTokenClient  = null;  // Google OAuth2 token client for Drive API
     var driveAccessToken  = null;  // In-memory access token (expires in ~1hr)
+    var driveTokenRequestInFlight = false; // Prevent repeated Google account popups
     var driveFileId       = null;  // Cached Drive file ID for factflow-progress.json
     var syncPending       = false; // Prevents overlapping sync calls
     var DRIVE_TOKEN_CACHE_KEY = 'factflow-drive-token';
@@ -2005,6 +2006,11 @@
         });
       }
       if (el.useDemoBtn) el.useDemoBtn.addEventListener('click', function () { state.demoMode = true; state.googleUser = null; renderAuthUI(); });
+      if (el.syncStatus) {
+        el.syncStatus.addEventListener('click', function () {
+          if (state.googleUser && !driveAccessToken) reconnectDriveFromUserAction();
+        });
+      }
       el.signOutBtn.addEventListener('click', signOut);
       el.startBtn.addEventListener('click', startRound);
       el.answerInput.addEventListener('input', handleAnswerInput);
@@ -2042,6 +2048,8 @@
       if (!s) return;
       s.style.display = 'inline-flex';
       s.style.color = isError ? 'rgba(255,160,160,0.95)' : 'rgba(255,255,255,0.88)';
+      s.style.cursor = (state.googleUser && !driveAccessToken) ? 'pointer' : '';
+      s.title = (state.googleUser && !driveAccessToken) ? 'Tap to reconnect Google Drive' : '';
       s.innerHTML = msg;
     }
     function hideSyncStatus() {
@@ -2102,6 +2110,19 @@
       } catch (e) {}
     }
 
+    function showDriveReconnectNeeded(action) {
+      addSyncLog('token_needed', (action || 'sync') + ': waiting for user reconnect');
+      showSyncStatus('&#9888; Drive reconnect needed - tap here', true);
+    }
+
+    function reconnectDriveFromUserAction() {
+      if (!state.googleUser) return;
+      getOrRefreshDriveToken('reconnect', function () {
+        loadProgressFromDrive();
+        if (localProgressDirty) syncProgressToDrive();
+      }, true);
+    }
+
     function initDriveTokenClient() {
       if (!window.google || !google.accounts || !google.accounts.oauth2) return false;
       if (GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID') === 0) return false;
@@ -2110,16 +2131,22 @@
         client_id: GOOGLE_CLIENT_ID,
         scope: 'https://www.googleapis.com/auth/drive.appdata',
         callback: function (tokenResponse) {
+          driveTokenRequestInFlight = false;
           if (tokenResponse && tokenResponse.error) {
             driveAccessToken = null;
             clearDriveTokenStorage();
-            showSyncStatus('&#9888; Drive permission needed', true);
+            if (driveTokenClient) driveTokenClient._pendingCallbacks = [];
+            addSyncLog('token_error', tokenResponse.error);
+            showDriveReconnectNeeded('token_error');
             return;
           }
           if (tokenResponse && tokenResponse.access_token) {
             driveAccessToken = tokenResponse.access_token;
             saveDriveTokenToStorage(driveAccessToken);
             addSyncLog('token_received', 'Drive access token ready');
+            syncRetryEntry = null;
+            if (syncRetryTimer) { clearTimeout(syncRetryTimer); syncRetryTimer = null; }
+            try { localStorage.removeItem('factflow-sync-queue'); } catch (e) {}
             startTokenExpiryCheck();
             startPeriodicSync();
             // Bug H3 fix: drain ALL pending callbacks instead of overwriting with a single one.
@@ -2128,7 +2155,9 @@
             driveTokenClient._pendingCallbacks = [];
             pending.forEach(function(cb) { try { cb(); } catch (e) {} });
           } else {
-            showSyncStatus('&#9888; Drive access denied', true);
+            if (driveTokenClient) driveTokenClient._pendingCallbacks = [];
+            addSyncLog('token_denied', 'No access token returned');
+            showDriveReconnectNeeded('token_denied');
           }
         }
       });
@@ -2147,29 +2176,35 @@
 
       if (!driveTokenClient) initDriveTokenClient();
       if (!driveTokenClient) {
-        // Bug H5 fix: "Drive not available" was a dead-end with no recovery.
-        // Schedule a retry so the sync eventually recovers if GSI loads later
-        // (e.g. slow network on first load).
+        // GSI may still be loading. Retry this silently, but do not open any account UI.
         addSyncLog('token_client_missing', action + ': google.accounts.oauth2 not available');
         showSyncStatus('&#9888; Drive not available - retrying...', true);
         scheduleRetrySync('drive_not_available');
         return;
       }
 
+      // Do not allow background sync, visibilitychange, token-expiry checks, or retry timers
+      // to open Google's account picker. Only a real user action may request a new Drive token.
+      if (!interactive) {
+        showDriveReconnectNeeded(action);
+        return;
+      }
+
       // Bug H3 fix: push to array so multiple concurrent callers all get fulfilled.
       if (!driveTokenClient._pendingCallbacks) driveTokenClient._pendingCallbacks = [];
       driveTokenClient._pendingCallbacks.push(callback);
+      if (driveTokenRequestInFlight) {
+        addSyncLog('token_join', action + ': joined existing token request');
+        return;
+      }
       try {
-        driveTokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+        driveTokenRequestInFlight = true;
+        driveTokenClient.requestAccessToken({ prompt: 'consent' });
       } catch (e) {
-        // P14 fix: save callbacks before clearing so we can still notify callers
-        var failedCallbacks = driveTokenClient._pendingCallbacks || [];
+        driveTokenRequestInFlight = false;
         driveTokenClient._pendingCallbacks = [];
-        showSyncStatus('&#9888; Drive authorization failed', true);
-        // Notify all queued callers so they aren't dropped permanently
-        failedCallbacks.forEach(function(cb) {
-          try { cb(); } catch (e2) {}
-        });
+        addSyncLog('token_request_error', e && e.message ? e.message : String(e));
+        showDriveReconnectNeeded('token_request_error');
       }
     }
 
@@ -2861,18 +2896,21 @@
     document.addEventListener('visibilitychange', function () {
       // v28 fix: use unified pageUnloadSyncing guard
       if (document.visibilityState === 'hidden' && state.googleUser && driveAccessToken && !syncPending && !pageUnloadSyncing) {
-        pageUnloadSyncing = true;
-        syncProgressToDrive();
+        if (!round && localProgressDirty) {
+          pageUnloadSyncing = true;
+          syncProgressToDrive();
+        }
         stopPeriodicSync();
       }
       // Bug M2 fix: debounce the visible handler to prevent rapid alt-tab from
       // firing multiple concurrent loadProgressFromDrive calls that race on localStorage.
       if (document.visibilityState === 'visible' && state.googleUser) {
+        pageUnloadSyncing = false;
         startPeriodicSync();
         clearTimeout(visibilityDebounceTimer);
         visibilityDebounceTimer = setTimeout(function () {
           visibilityDebounceTimer = null;
-          getOrRefreshDriveToken('refresh', loadProgressFromDrive, false);
+          if (!round) getOrRefreshDriveToken('refresh', loadProgressFromDrive, false);
         }, 500);
       }
     });
