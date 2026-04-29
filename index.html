@@ -952,6 +952,7 @@
     function saveProgressToStorage(progress) {
       var uid = getUserId();
       if (!uid) return;
+      progress.updatedAt = new Date().toISOString();
       localStorage.setItem(STORAGE_KEY + uid, JSON.stringify(progress));
     }
 
@@ -1210,7 +1211,7 @@
           }
         } catch(e) {}
         initDriveTokenClient();
-        getOrRefreshDriveToken('load', loadProgressFromDrive);
+        getOrRefreshDriveToken('load', loadProgressFromDrive, true);
         renderAuthUI();
       } catch (e) {
         setStatus(el.roundStatus, 'Sign-in failed. Try again.', 'bad');
@@ -1441,7 +1442,6 @@
         if (el.personalBestValue) el.personalBestValue.textContent = String(round.bestStreak);
       }
       recordSessionComplete(progress);
-      triggerDriveSync();
       sessionQuizCount++;
       if (el.quizCountValue) el.quizCountValue.textContent = String(sessionQuizCount);
       var msg = 'Done! ' + round.correct + ' correct. ';
@@ -1453,6 +1453,7 @@
         el.graduateBanner.textContent = 'You mastered \u00d7' + (newTable - 1) + '! Now working on \u00d7' + newTable + '.';
         el.graduateBanner.classList.add('active');
       }
+      triggerDriveSync();
       msg += 'Active through \u00d7' + model.maxSecond + '.';
       setStatus(el.roundStatus, msg, graduated ? 'good' : '');
       renderProgressGrid();
@@ -2085,31 +2086,38 @@
     }
 
     function initDriveTokenClient() {
-      if (!window.google || !google.accounts || !google.accounts.oauth2) return;
-      if (GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID') === 0) return;
+      if (!window.google || !google.accounts || !google.accounts.oauth2) return false;
+      if (GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID') === 0) return false;
       driveTokenClient = google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: 'https://www.googleapis.com/auth/drive.appdata',
-        prompt: '',
         callback: function(tokenResponse) {
+          if (tokenResponse && tokenResponse.error) {
+            driveAccessToken = null;
+            showSyncStatus('&#9888; Drive permission needed', true);
+            console.log('FactFlow Drive token response error:', tokenResponse);
+            return;
+          }
+
           if (tokenResponse && tokenResponse.access_token) {
             driveAccessToken = tokenResponse.access_token;
-            // After obtaining token: load from Drive on first sign-in, or sync after session
-            if (driveTokenClient._pendingAction === 'load') {
+            if (driveTokenClient._pendingCallback) {
+              var cb = driveTokenClient._pendingCallback;
               driveTokenClient._pendingAction = null;
-              loadProgressFromDrive();
-            } else if (driveTokenClient._pendingAction === 'sync') {
-              driveTokenClient._pendingAction = null;
-              syncProgressToDrive();
+              driveTokenClient._pendingCallback = null;
+              cb();
             }
           } else {
             showSyncStatus('&#9888; Drive access denied', true);
+            console.log('FactFlow Drive token response missing access token:', tokenResponse);
           }
         }
       });
+      return true;
     }
 
-    function getOrRefreshDriveToken(action, callback) {
+    function getOrRefreshDriveToken(action, callback, interactive, attempt) {
+      attempt = attempt || 0;
       if (driveAccessToken) {
         callback();
         return;
@@ -2118,12 +2126,24 @@
         initDriveTokenClient();
       }
       if (!driveTokenClient) {
+        if (attempt < 50) {
+          setTimeout(function() {
+            getOrRefreshDriveToken(action, callback, interactive, attempt + 1);
+          }, 200);
+          return;
+        }
         showSyncStatus('&#9888; Drive not available', true);
+        console.log('FactFlow Drive token client was not available after waiting.');
         return;
       }
       driveTokenClient._pendingAction = action;
       driveTokenClient._pendingCallback = callback;
-      driveTokenClient.requestAccessToken({ prompt: '' });
+      try {
+        driveTokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+      } catch (e) {
+        showSyncStatus('&#9888; Drive authorization failed', true);
+        console.log('FactFlow Drive token error:', e);
+      }
     }
 
     function driveMultipartBody(boundary, meta, content) {
@@ -2164,7 +2184,14 @@
           },
           body: body
         })
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+          if (!r.ok) {
+            return r.text().then(function(text) {
+              throw new Error('Drive upload failed: ' + r.status + ' ' + text);
+            });
+          }
+          return r.json();
+        })
         .then(function(data) {
           syncPending = false;
           if (data.id) {
@@ -2173,13 +2200,15 @@
             setTimeout(hideSyncStatus, 2500);
           } else {
             showSyncStatus('&#9888; Sync failed', true);
+            console.log('FactFlow Drive upload response missing file id:', data);
             setTimeout(hideSyncStatus, 3500);
           }
         })
-        .catch(function() {
+        .catch(function(e) {
           syncPending = false;
-          driveAccessToken = null; // Token may have expired - clear it
+          driveAccessToken = null;
           showSyncStatus('&#9888; Sync error', true);
+          console.log('FactFlow Drive sync error:', e);
           setTimeout(hideSyncStatus, 3500);
         });
       }
@@ -2187,17 +2216,27 @@
       if (driveFileId) {
         doUpload(driveFileId);
       } else {
-        // Find existing file first
         fetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'factflow-progress.json'&fields=files(id)", {
           headers: { 'Authorization': 'Bearer ' + driveAccessToken }
         })
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+          if (!r.ok) {
+            return r.text().then(function(text) {
+              throw new Error('Drive list before sync failed: ' + r.status + ' ' + text);
+            });
+          }
+          return r.json();
+        })
         .then(function(data) {
           driveFileId = (data.files && data.files.length > 0) ? data.files[0].id : null;
           doUpload(driveFileId);
         })
-        .catch(function() {
-          doUpload(null); // Try creating new file anyway
+        .catch(function(e) {
+          syncPending = false;
+          driveAccessToken = null;
+          showSyncStatus('&#9888; Sync lookup failed', true);
+          console.log('FactFlow Drive sync lookup error:', e);
+          setTimeout(hideSyncStatus, 3500);
         });
       }
     }
@@ -2208,29 +2247,44 @@
       fetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'factflow-progress.json'&fields=files(id)", {
         headers: { 'Authorization': 'Bearer ' + driveAccessToken }
       })
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) {
+          return r.text().then(function(text) {
+            throw new Error('Drive list failed: ' + r.status + ' ' + text);
+          });
+        }
+        return r.json();
+      })
       .then(function(data) {
         if (!data.files || data.files.length === 0) {
-          // No Drive data yet - just sync local to Drive
           hideSyncStatus();
           syncProgressToDrive();
-          return;
+          return null;
         }
         driveFileId = data.files[0].id;
         return fetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media', {
           headers: { 'Authorization': 'Bearer ' + driveAccessToken }
         });
       })
-      .then(function(r) { if (r) return r.json(); })
+      .then(function(r) {
+        if (!r) return null;
+        if (!r.ok) {
+          return r.text().then(function(text) {
+            throw new Error('Drive media load failed: ' + r.status + ' ' + text);
+          });
+        }
+        return r.json();
+      })
       .then(function(driveProgress) {
         if (!driveProgress) return;
         var uid = STORAGE_KEY + state.googleUser.sub;
         var localRaw = localStorage.getItem(uid);
         var localProgress = localRaw ? JSON.parse(localRaw) : null;
-        // Use whichever has more sessions (Drive wins on tie)
         var localCount = localProgress ? (localProgress.sessionsCompleted || 0) : 0;
         var driveCount = driveProgress.sessionsCompleted || 0;
-        if (driveCount >= localCount) {
+        var localUpdated = localProgress && localProgress.updatedAt ? Date.parse(localProgress.updatedAt) : 0;
+        var driveUpdated = driveProgress.updatedAt ? Date.parse(driveProgress.updatedAt) : 0;
+        if (!localProgress || driveCount > localCount || (driveCount === localCount && driveUpdated >= localUpdated)) {
           localStorage.setItem(uid, JSON.stringify(driveProgress));
         }
         hideSyncStatus();
@@ -2238,15 +2292,19 @@
         renderProgressGraph();
         renderAuthUI();
       })
-      .catch(function() {
+      .catch(function(e) {
+        driveAccessToken = null;
         hideSyncStatus();
+        showSyncStatus('&#9888; Drive load failed', true);
+        console.log('FactFlow Drive load error:', e);
+        setTimeout(hideSyncStatus, 3500);
       });
     }
 
     function triggerDriveSync() {
       if (!state.googleUser) return;
       if (!driveAccessToken) {
-        getOrRefreshDriveToken('sync', syncProgressToDrive);
+        getOrRefreshDriveToken('sync', syncProgressToDrive, false);
       } else {
         syncProgressToDrive();
       }
@@ -2271,7 +2329,7 @@
       if (state.googleUser) {
         setTimeout(function() {
           initDriveTokenClient();
-          getOrRefreshDriveToken('load', loadProgressFromDrive);
+          getOrRefreshDriveToken('load', loadProgressFromDrive, false);
         }, 800);
       }
       initGoogleSignIn();
