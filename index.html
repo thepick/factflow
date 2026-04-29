@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FactFlow</title>
+  <link rel="icon" type="image/png" sizes="512x512" href="favicon-512x512.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png">
+  <link rel="icon" type="image/png" sizes="64x64"   href="favicon-64x64.png">
+  <link rel="icon" type="image/png" sizes="48x48"   href="favicon-48x48.png">
+  <link rel="icon" type="image/png" sizes="32x32"   href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16"   href="favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180"      href="favicon-180x180.png">
   <!-- Replace YOUR_CLIENT_ID with a real Google OAuth 2.0 client ID from https://console.cloud.google.com -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
@@ -40,7 +47,7 @@
     .brand { display: flex; gap: var(--space-3); align-items: center; }
     .logo { width: 38px; height: 38px; border-radius: 10px; background: rgba(255,255,255,0.12); display: grid; place-items: center; flex: 0 0 auto; font-size: 1.3rem; font-weight: 700; }
     .header h1 { font-size: 1.15rem; }
-    .header-actions { display: flex; gap: var(--space-2); }
+    .header-actions { display: flex; gap: var(--space-2); align-items: center; }
     .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border-radius: var(--radius-md); background: rgba(255,255,255,0.12); color: var(--color-text-inverse); border: 1px solid rgba(255,255,255,0.16); font-size: 1rem; }
     .icon-btn:hover, .icon-btn.active { background: rgba(255,255,255,0.22); }
     .panel { background: var(--color-surface); border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent); border-radius: var(--radius-xl); padding: var(--space-4); box-shadow: var(--shadow-sm); }
@@ -57,7 +64,7 @@
     .choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
     .choice-chip { border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent); border-radius: var(--radius-full); padding: 0.55rem 0.7rem; background: var(--color-surface-2); text-align: center; cursor: pointer; font-size: var(--text-sm); }
     .choice-chip.active { background: var(--color-primary-highlight); border-color: color-mix(in srgb, var(--color-primary) 35%, transparent); }
-    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
     .stat { padding: var(--space-2) var(--space-3); background: var(--color-surface-2); border: 1px solid color-mix(in srgb, var(--color-text) 6%, transparent); border-radius: var(--radius-lg); }
     .stat .label { font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .stat .value { margin-top: 0.1rem; font-size: 1.15rem; font-weight: 700; }
@@ -453,7 +460,7 @@
     @media (max-width: 500px) {
       .app { padding: 0.5rem; }
       .header { border-radius: var(--radius-lg); padding: var(--space-2) var(--space-3); }
-      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .metrics { grid-template-columns: repeat(3, 1fr); }
       .problem-text { font-size: 2.2rem; }
       .answer-input { font-size: 1.6rem; }
       .pg-panel { padding: var(--space-2); }
@@ -467,7 +474,59 @@
       .user-info.compact .subtle { display: none; }
       /* .progress-graph svg height is auto from viewBox */
     }
+
+    /* ──── Settings dropdown ──── */
+    .settings-menu-wrap { position: relative; }
+    .settings-dropdown {
+      display: none; position: absolute; top: calc(100% + 8px); right: 0;
+      background: var(--color-surface);
+      border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+      padding: var(--space-2); min-width: 220px; z-index: 300;
+    }
+    .settings-dropdown.open { display: block; }
+    .settings-section-label {
+      font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-text-faint); font-weight: 700;
+      padding: var(--space-2) var(--space-3) var(--space-1);
+    }
+    .settings-item {
+      display: block; width: 100%; text-align: left;
+      padding: var(--space-2) var(--space-3); border-radius: var(--radius-md);
+      font-size: var(--text-sm); color: var(--color-text); background: none; border: none;
+      cursor: pointer;
+    }
+    .settings-item:hover { background: var(--color-surface-offset); }
+    .settings-item.danger { color: var(--color-error); }
+    .settings-item.danger:hover { background: var(--color-error-highlight); }
+    .settings-confirm-box { padding: var(--space-2) var(--space-3) var(--space-1); }
+    .settings-confirm-box p {
+      font-size: var(--text-xs); color: var(--color-text-muted);
+      margin-bottom: var(--space-2); max-width: none; line-height: 1.5;
+    }
+    .settings-confirm-box .settings-item { margin-bottom: var(--space-1); }
+    /* ──── Level-up toast ──── */
+    .levelup-toast {
+      display: none; position: fixed; top: 72px; left: 50%;
+      transform: translateX(-50%) translateY(-6px); opacity: 0;
+      background: var(--color-primary); color: var(--color-text-inverse);
+      padding: var(--space-2) var(--space-6); border-radius: var(--radius-full);
+      font-weight: 700; font-size: var(--text-base); box-shadow: var(--shadow-md);
+      z-index: 1000; transition: opacity 260ms ease, transform 260ms ease;
+      white-space: nowrap; pointer-events: none;
+    }
+    .levelup-toast.show {
+      display: block; opacity: 1; transform: translateX(-50%) translateY(0);
+    }
   </style>
+<script>
+  (function(){
+    var saved=null;
+    try{saved=localStorage.getItem('factflow-theme');}catch(e){}
+    var t=saved||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+    document.documentElement.setAttribute('data-theme',t);
+  })();
+</script>
 </head>
 <body>
   <div class="app">
@@ -487,8 +546,27 @@
             <div class="name" id="userName"></div>
             <div class="subtle" id="userEmail"></div>
           </div>
-          <button type="button" class="btn-ghost tiny" id="resetProgressBtn" title="Reset progress">Reset</button>
           <button type="button" class="btn-ghost tiny" id="signOutBtn">Sign out</button>
+        </div>
+
+        <div class="settings-menu-wrap hidden" id="settingsMenuWrap">
+          <button type="button" class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+          <div class="settings-dropdown" id="settingsDropdown">
+            <div class="settings-section-label">Account</div>
+            <div id="resetNormal">
+              <button type="button" class="settings-item danger" id="settingsResetBtn">Reset all progress...</button>
+            </div>
+            <div id="resetConfirm" class="settings-confirm-box" style="display:none;">
+              <p>This permanently deletes all your saved progress. There is no undo.</p>
+              <button type="button" class="settings-item danger" id="settingsConfirmResetBtn">Yes, delete everything</button>
+              <button type="button" class="settings-item" id="settingsCancelResetBtn">Cancel</button>
+            </div>
+          </div>
         </div>
         <button type="button" class="icon-btn" id="themeToggle" aria-label="Toggle theme" title="Toggle theme">◐</button>
       </div>
@@ -526,7 +604,8 @@
             <div class="metrics" style="margin-top:var(--space-2);">
               <div class="stat" id="timeLeftStat"><div class="label">Time left</div><div class="value" id="timeLeftValue">60</div></div>
               <div class="stat"><div class="label">Correct</div><div class="value" id="correctValue">0</div></div>
-              <div class="stat"><div class="label">Streak</div><div class="value" id="streakValue">0</div></div>
+              <div class="stat"><div class="label">Session Best</div><div class="value" id="streakValue">0</div></div>
+              <div class="stat"><div class="label">Personal Best</div><div class="value" id="personalBestValue">-</div></div>
               <div class="stat"><div class="label">Quizzes</div><div class="value" id="quizCountValue">0</div></div>
             </div>
             <div class="streak-meter" aria-label="Streak power">
@@ -663,7 +742,7 @@
     'use strict';
 
     // ═══════════════════════════ CONFIG ═══════════════════════════
-    var GOOGLE_CLIENT_ID = '220590044784-6bohsjumu2r67ds92lhmfdubhh3qen5i.apps.googleusercontent.com';
+    var GOOGLE_CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';
     var STORAGE_KEY    = 'factflow-progress-';  // localStorage key prefix
     var STARTING_TABLE = 2;   // First times table (default: 2)
     var MAX_TABLE      = 12;  // Last times table  (default: 12)
@@ -697,7 +776,11 @@
     var cooldownUntil = 0;
     var wrongBurstCount = 0;
     var wrongBurstStart = 0;
-    var lastTheme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var lastTheme = (function(){
+      var saved = null;
+      try { saved = localStorage.getItem('factflow-theme'); } catch(e) {}
+      return saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    })();
     var justGraduated = false; // Show banner after round ends
     var sessionQuizCount = 0;    // Resets each page load
     var startBtnCooldown = null; // Post-round delay interval
@@ -707,7 +790,6 @@
     function cacheDom() {
       el.themeToggle = document.getElementById('themeToggle');
       el.topLogin = document.getElementById('topLogin');
-      el.resetProgressBtn = document.getElementById('resetProgressBtn');
       el.teacherTabBtn = document.getElementById('teacherTabBtn');
       el.practiceView = document.getElementById('practiceView');
       el.teacherView = document.getElementById('teacherView');
@@ -728,6 +810,14 @@
       el.timeLeftValue = document.getElementById('timeLeftValue');
       el.correctValue = document.getElementById('correctValue');
       el.streakValue = document.getElementById('streakValue');
+      el.personalBestValue = document.getElementById('personalBestValue');
+      el.settingsMenuWrap = document.getElementById('settingsMenuWrap');
+      el.settingsBtn = document.getElementById('settingsBtn');
+      el.settingsDropdown = document.getElementById('settingsDropdown');
+      el.settingsResetBtn = document.getElementById('settingsResetBtn');
+      el.settingsConfirmResetBtn = document.getElementById('settingsConfirmResetBtn');
+      el.settingsCancelResetBtn = document.getElementById('settingsCancelResetBtn');
+      el.levelupToast = document.getElementById('levelupToast');
       el.problemText = document.getElementById('problemText');
       el.answerInput = document.getElementById('answerInput');
       el.feedbackPill = document.getElementById('feedbackPill');
@@ -803,7 +893,7 @@
     }
 
     function defaultProgress() {
-      return { currentTable: STARTING_TABLE, factStats: {}, sessionsCompleted: 0, sessionHistory: [] };
+      return { currentTable: STARTING_TABLE, factStats: {}, sessionsCompleted: 0, sessionHistory: [], allTimeBestStreak: 0 };
     }
 
     function loadProgress() {
@@ -817,6 +907,7 @@
         if (!p.currentTable || p.currentTable < STARTING_TABLE) p.currentTable = STARTING_TABLE;
         if (!p.sessionsCompleted) p.sessionsCompleted = 0;
         if (!p.sessionHistory) p.sessionHistory = [];
+        if (p.allTimeBestStreak == null) p.allTimeBestStreak = 0;
         return p;
       } catch (e) { return defaultProgress(); }
     }
@@ -1124,6 +1215,10 @@
       el.streakValue.textContent = '0';
       updateStreakMeter(0);
       updateFpmMeter(0);
+      if (el.personalBestValue) {
+        var startPb = loadProgress().allTimeBestStreak || 0;
+        el.personalBestValue.textContent = startPb > 0 ? String(startPb) : '-';
+      }
       if (el.timeLeftStat) el.timeLeftStat.classList.remove('time-warn', 'time-danger');
       setRoundPill('Running');
       setStatus(el.roundStatus, 'Go! Answer as many as you can.', 'good');
@@ -1219,7 +1314,6 @@
       if (numeric === expected) {
         round.attempted++;
         round.streak = 0;
-        el.streakValue.textContent = '0';
         updateStreakMeter(0);
         hideTimeoutOverlay();
         nextProblem();
@@ -1244,8 +1338,9 @@
         round.streak++;
         round.bestStreak = Math.max(round.bestStreak, round.streak);
         el.correctValue.textContent = String(round.correct);
-        el.streakValue.textContent = String(round.streak);
+        el.streakValue.textContent = String(round.bestStreak);
         updateStreakMeter(round.streak);
+        checkMidRoundGraduation();
         flashGlow('good');
         nextProblem();
       } else if (String(expected).startsWith(raw)) {
@@ -1255,8 +1350,6 @@
           round.hasRecordedWrong = true;
           round.attempted++;
           round.streak = 0;
-          round.bestStreak = Math.max(round.bestStreak, round.streak);
-          el.streakValue.textContent = '0';
           updateStreakMeter(0);
           updateFactStats(round.currentProblem.table, round.currentProblem.second, false, Date.now() - round.problemStartTime, false);
         }
@@ -1289,6 +1382,11 @@
       var progress = loadProgress();
       var model = getActiveModel(progress);
       var graduated = checkGraduation(progress);
+      if (round && round.bestStreak > (progress.allTimeBestStreak || 0)) {
+        progress.allTimeBestStreak = round.bestStreak;
+        saveProgressToStorage(progress);
+        if (el.personalBestValue) el.personalBestValue.textContent = String(round.bestStreak);
+      }
       recordSessionComplete(progress);
       sessionQuizCount++;
       if (el.quizCountValue) el.quizCountValue.textContent = String(sessionQuizCount);
@@ -1306,6 +1404,29 @@
       renderProgressGrid();
       renderProgressGraph();
       updatePracticeHeader();
+    }
+
+
+    // ══════════════════════ MID-ROUND GRADUATION ══════════════════════
+    function checkMidRoundGraduation() {
+      if (!round) return;
+      var progress = loadProgress();
+      if (progress.currentTable >= MAX_TABLE) return;
+      if (!checkGraduation(progress)) return;
+      graduate(progress);
+      var newTable = progress.currentTable;
+      showLevelUpToast('⬆ Moving up to ×' + newTable + '!');
+      updatePracticeHeader();
+      renderProgressGrid();
+    }
+
+    function showLevelUpToast(msg) {
+      if (!el.levelupToast) return;
+      el.levelupToast.textContent = msg;
+      el.levelupToast.classList.remove('show');
+      void el.levelupToast.offsetWidth;
+      el.levelupToast.classList.add('show');
+      setTimeout(function () { el.levelupToast.classList.remove('show'); }, 3200);
     }
 
     // ═══════════════════════════ KEYPAD ═══════════════════════════
@@ -1660,6 +1781,7 @@
       }
       if (el.userInfo) el.userInfo.classList.toggle('hidden', !hasGoogle);
       if (el.topLogin) el.topLogin.classList.toggle('hidden', hasGoogle);
+      if (el.settingsMenuWrap) el.settingsMenuWrap.classList.toggle('hidden', !hasGoogle);
       if (el.googleSignInBtn && el.googleSignInBtn.parentElement) el.googleSignInBtn.parentElement.classList.toggle('hidden', hasGoogle);
       if (el.demoNote) el.demoNote.classList.add('hidden');
       el.practiceLayout.classList.toggle('hidden', !signedIn);
@@ -1671,6 +1793,10 @@
         renderProgressGrid();
         renderProgressGraph();
         updateStreakMeter(round ? round.streak : 0);
+        if (el.personalBestValue) {
+          var authPb = loadProgress().allTimeBestStreak || 0;
+          el.personalBestValue.textContent = authPb > 0 ? String(authPb) : '-';
+        }
       }
     }
 
@@ -1683,14 +1809,12 @@
     function resetProgress() {
       var uid = getUserId();
       if (!uid || !state.googleUser) return;
-      var ok = window.confirm('Reset your saved progress and start over?');
-      if (!ok) return;
       localStorage.removeItem(STORAGE_KEY + uid);
       sessionQuizCount = 0;
       if (el.quizCountValue) el.quizCountValue.textContent = '0';
       stopRound(false);
       renderAuthUI();
-      setStatus(el.roundStatus, 'Progress reset. Ready to start again.', 'warn');
+      setStatus(el.roundStatus, 'Progress reset. Ready to start fresh.', 'warn');
     }
 
     function updateStreakMeter(streak) {
@@ -1751,12 +1875,55 @@
     function toggleTheme() {
       lastTheme = lastTheme === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', lastTheme);
+      try { localStorage.setItem('factflow-theme', lastTheme); } catch(e) {}
     }
 
     // ═══════════════════════════ EVENTS ═══════════════════════════
     function bindEvents() {
       el.themeToggle.addEventListener('click', toggleTheme);
-      if (el.resetProgressBtn) el.resetProgressBtn.addEventListener('click', resetProgress);
+
+      // ── Settings menu ──
+      if (el.settingsBtn) {
+        el.settingsBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var open = el.settingsDropdown.classList.toggle('open');
+          if (open) {
+            document.getElementById('resetNormal').style.display = '';
+            document.getElementById('resetConfirm').style.display = 'none';
+          }
+        });
+      }
+      document.addEventListener('click', function (e) {
+        if (el.settingsDropdown && el.settingsDropdown.classList.contains('open')) {
+          if (!el.settingsMenuWrap || !el.settingsMenuWrap.contains(e.target)) {
+            el.settingsDropdown.classList.remove('open');
+            document.getElementById('resetNormal').style.display = '';
+            document.getElementById('resetConfirm').style.display = 'none';
+          }
+        }
+      });
+      if (el.settingsResetBtn) {
+        el.settingsResetBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          document.getElementById('resetNormal').style.display = 'none';
+          document.getElementById('resetConfirm').style.display = '';
+        });
+      }
+      if (el.settingsConfirmResetBtn) {
+        el.settingsConfirmResetBtn.addEventListener('click', function () {
+          el.settingsDropdown.classList.remove('open');
+          document.getElementById('resetNormal').style.display = '';
+          document.getElementById('resetConfirm').style.display = 'none';
+          resetProgress();
+        });
+      }
+      if (el.settingsCancelResetBtn) {
+        el.settingsCancelResetBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          document.getElementById('resetNormal').style.display = '';
+          document.getElementById('resetConfirm').style.display = 'none';
+        });
+      }
       if (el.teacherTabBtn) {
         el.teacherTabBtn.addEventListener('click', function () {
           if (el.teacherView.classList.contains('hidden')) showTeacherView(); else showPracticeView();
@@ -1810,5 +1977,6 @@
     init();
   })();
   </script>
+  <div class="levelup-toast" id="levelupToast" aria-live="polite"></div>
 </body>
 </html>
