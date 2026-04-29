@@ -775,12 +775,14 @@
     var syncLog = [];                    // Ring buffer of sync events
     var MAX_SYNC_LOG = 200;
     function addSyncLog(action, detail) {
-      if (!syncDebug) return;
       var entry = { at: new Date().toISOString(), ts: Date.now(), action: action, detail: detail };
       syncLog.push(entry);
       if (syncLog.length > MAX_SYNC_LOG) syncLog.shift();
-      if (typeof console !== 'undefined' && console.log) {
-        console.log('[SyncTrace]', entry.at, action, detail);
+      if (syncDebug) {
+        if (typeof console !== 'undefined' && console.log) {
+          console.log('[SyncTrace]', entry.at, action, detail);
+        }
+        renderSyncDebugPanel();
       }
     }
     function toggleSyncDebug() {
@@ -1225,9 +1227,11 @@
         // when Drive has no data on first sign-in. Pre-migrating here was dead code
         // because loadProgressFromDrive immediately overwrote the key anyway (Bug C1).
         initDriveTokenClient();
-        startPeriodicSync();
         startTokenExpiryCheck();
-        getOrRefreshDriveToken('load', loadProgressFromDrive, true);
+        getOrRefreshDriveToken('load', function () {
+          loadProgressFromDrive();
+          startPeriodicSync();
+        }, true);
         renderAuthUI();
       } catch (e) {
         setStatus(el.roundStatus, 'Sign-in failed. Try again.', 'bad');
@@ -2115,6 +2119,9 @@
           if (tokenResponse && tokenResponse.access_token) {
             driveAccessToken = tokenResponse.access_token;
             saveDriveTokenToStorage(driveAccessToken);
+            addSyncLog('token_received', 'Drive access token ready');
+            startTokenExpiryCheck();
+            startPeriodicSync();
             // Bug H3 fix: drain ALL pending callbacks instead of overwriting with a single one.
             // GSI is shared across all auth flows; multiple callers may be queued simultaneously.
             var pending = driveTokenClient._pendingCallbacks || [];
@@ -2143,7 +2150,8 @@
         // Bug H5 fix: "Drive not available" was a dead-end with no recovery.
         // Schedule a retry so the sync eventually recovers if GSI loads later
         // (e.g. slow network on first load).
-        showSyncStatus('&#9888; Drive not available — retrying...', true);
+        addSyncLog('token_client_missing', action + ': google.accounts.oauth2 not available');
+        showSyncStatus('&#9888; Drive not available - retrying...', true);
         scheduleRetrySync('drive_not_available');
         return;
       }
@@ -2160,7 +2168,7 @@
         showSyncStatus('&#9888; Drive authorization failed', true);
         // Notify all queued callers so they aren't dropped permanently
         failedCallbacks.forEach(function(cb) {
-          try { cb(); } catch (_) {}
+          try { cb(); } catch (e2) {}
         });
       }
     }
@@ -2250,6 +2258,8 @@
               clearTimeout(syncDebounceTimer);
               syncDebounceTimer = setTimeout(function () { triggerDriveSync(); }, 800);
             }
+            syncRetryEntry = null;
+            try { localStorage.setItem('factflow-sync-queue', JSON.stringify([])); } catch (e) {}
             showSyncStatus('&#10003; Synced', false);
             addSyncLog('sync_ok', 'Uploaded, etag=' + (driveFileEtag ? driveFileEtag.slice(0,12) : 'none'));
             setTimeout(hideSyncStatus, 2500);
@@ -2268,7 +2278,7 @@
             || msg.indexOf('Failed to fetch') !== -1
             || msg.indexOf('network') !== -1 && msg.length < 40;
           if (isNetworkError) {
-            showSyncStatus('&#9888; Network error — retrying...', true);
+            showSyncStatus('&#9888; Network error - retrying...', true);
             addSyncLog('sync_retry_net', msg.slice(0,80));
             scheduleRetrySync(msg);
           } else if (msg.indexOf('401') !== -1 || msg.indexOf('403') !== -1) {
@@ -2281,7 +2291,7 @@
             // v28 fix: 412 Precondition Failed = ETag mismatch.
             // Pull from Drive FIRST, merge, then re-upload.
             driveFileEtag = null;
-            showSyncStatus('&#9888; Conflict — resolving...', true);
+            showSyncStatus('&#9888; Conflict - resolving...', true);
             addSyncLog('conflict_412', 'ETag mismatch - pulling from Drive');
             if (!syncPending) {
               getOrRefreshDriveToken('conflict', function() {
@@ -2292,7 +2302,7 @@
             // Bug H6 fix: 404 means the file was deleted on Drive — clear cached
             // fileId so the next sync re-lists and creates the file fresh.
             driveFileId = null;
-            showSyncStatus('&#9888; File not found — recreating...', true);
+            showSyncStatus('&#9888; File not found - recreating...', true);
             addSyncLog('sync_404', 'File not found on Drive, will recreate');
             scheduleRetrySync(msg);
           } else {
@@ -2325,7 +2335,7 @@
           syncPending = false;
           var msg = e.message || '';
           if (msg.indexOf('net::') === 0 || msg.indexOf('NetworkError') !== -1) {
-            showSyncStatus('&#9888; Network error — retrying...', true);
+            showSyncStatus('&#9888; Network error - retrying...', true);
             scheduleRetrySync(msg);
           } else {
             showSyncStatus('&#9888; Sync lookup failed', true);
@@ -2612,6 +2622,8 @@
         if (r.status === 304) {
           hideSyncStatus();
           localProgressDirty = false;
+          syncRetryEntry = null;
+          try { localStorage.setItem('factflow-sync-queue', JSON.stringify([])); } catch (e) {}
           addSyncLog('load_304', 'File unchanged, skipping merge');
           return null;
         }
@@ -2660,6 +2672,8 @@
         syncPendingSnapshot = null;
         hideSyncStatus();
         localProgressDirty = false;
+        syncRetryEntry = null;
+        try { localStorage.setItem('factflow-sync-queue', JSON.stringify([])); } catch (e) {}
         addSyncLog('load_merge_done', 'Merged state applied to localStorage');
         renderProgressGrid();
         renderProgressGraph();
@@ -2676,7 +2690,7 @@
           driveAccessToken = null;
           clearDriveTokenStorage();
           hideSyncStatus();
-          showSyncStatus('&#9888; Drive session expired — re-authorize', true);
+          showSyncStatus('&#9888; Drive session expired - re-authorize', true);
           setTimeout(hideSyncStatus, 4000);
         } else {
           driveAccessToken = null;
@@ -2697,7 +2711,8 @@
     }
 
     function scheduleRetrySync(reason) {
-      if (!state.googleUser || !driveAccessToken) return;
+      if (!state.googleUser) return;
+      addSyncLog('retry_schedule', String(reason || ''));
 
       var retryCount = (syncRetryEntry && syncRetryEntry.retryCount || 0) + 1;
 
@@ -2717,7 +2732,9 @@
       var backoffMs = SYNC_RETRY_BACKOFF_BASE_MS * Math.pow(2, retryCount - 1);
 
       if (syncRetryTimer) clearTimeout(syncRetryTimer);
+      try { localStorage.setItem('factflow-sync-queue', JSON.stringify([syncRetryEntry])); } catch (e) {}
       showSyncStatus('&#8635; Retrying in ' + Math.round(backoffMs / 1000) + 's...', false);
+      addSyncLog('retry_wait', 'Attempt ' + retryCount + ' in ' + Math.round(backoffMs / 1000) + 's');
       syncRetryTimer = setTimeout(function() {
         syncRetryTimer = null;
         triggerDriveSync();
@@ -2814,7 +2831,7 @@
           if (rq && rq.length) {
             syncRetryEntry = rq[0];
             addSyncLog('init_restore_retry', 'Restored retry queue (attempt ' + (syncRetryEntry.retryCount || 0) + ')');
-            if (state.googleUser && driveAccessToken && syncRetryEntry && syncRetryEntry.retryCount <= MAX_SYNC_RETRIES) {
+            if (state.googleUser && syncRetryEntry && syncRetryEntry.retryCount <= MAX_SYNC_RETRIES) {
               var backoffMs = SYNC_RETRY_BACKOFF_BASE_MS * Math.pow(2, syncRetryEntry.retryCount - 1);
               syncRetryTimer = setTimeout(function() {
                 syncRetryTimer = null;
@@ -2864,12 +2881,12 @@
     window.addEventListener('offline', function () {
       stopPeriodicSync();
       addSyncLog('offline', 'Going offline - periodic sync paused');
-      showSyncStatus('&#9729; Offline — data saved locally', false);
+      showSyncStatus('&#9729; Offline - data saved locally', false);
       try { localStorage.setItem('factflow-sync-queue', JSON.stringify(syncRetryEntry ? [syncRetryEntry] : [])); } catch (e) {}
     });
     window.addEventListener('online', function () {
       addSyncLog('online', 'Back online - resuming sync');
-      showSyncStatus('&#9711; Back online — syncing...', false);
+      showSyncStatus('&#9711; Back online - syncing...', false);
       startPeriodicSync();
       try {
         var savedQueue = localStorage.getItem('factflow-sync-queue');
