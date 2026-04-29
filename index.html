@@ -518,7 +518,35 @@
     .levelup-toast.show {
       display: block; opacity: 1; transform: translateX(-50%) translateY(0);
     }
-  </style>
+  
+  /* Graph hover tooltip */
+  .graph-tooltip {
+    position: fixed;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 0.35rem 0.6rem;
+    font-size: var(--text-xs);
+    font-family: var(--font-body);
+    color: var(--color-text);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms ease;
+    z-index: 500;
+    white-space: nowrap;
+    line-height: 1.6;
+  }
+  .graph-tooltip.visible { opacity: 1; }
+  .graph-tooltip .tt-score {
+    font-weight: 800;
+    font-size: 1rem;
+    color: var(--color-primary);
+    display: block;
+    line-height: 1.2;
+  }
+  .graph-dot-hit { cursor: pointer; }
+</style>
 <script>
   (function(){
     var saved=null;
@@ -661,7 +689,7 @@
             <span><span class="swatch lk"></span> Locked</span>
           </div>
           <div class="progress-graph-wrap">
-            <h3>Mastery over time</h3>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3)"><h3 style="margin-bottom:0">Mastery over time</h3><button type="button" id="graphToggleBtn" class="btn-ghost" style="font-size:0.68rem;padding:0.2rem 0.5rem;min-height:auto;border-radius:var(--radius-full);opacity:0.7;letter-spacing:0.03em" title="Toggle between condensed and full label view">Show all dates</button></div>
             <div class="progress-graph" id="progressGraph" aria-label="Progress Graph"></div>
           </div>
         </aside>
@@ -782,6 +810,7 @@
       return saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     })();
     var justGraduated = false; // Show banner after round ends
+    var graphShowAllLabels = false; // Toggle: show all x-axis date labels
     var sessionQuizCount = 0;    // Resets each page load
     var startBtnCooldown = null; // Post-round delay interval
 
@@ -1493,7 +1522,10 @@
         points.push({
           session: item.session || (i + 1),
           masteryScore: clamp(ms, 0, 100),
-          currentTable: item.currentTable || STARTING_TABLE
+          currentTable: item.currentTable || STARTING_TABLE,
+          date: item.at || null,
+          accuracy: item.accuracy || null,
+          fpm: item.fpm || null
         });
       });
 
@@ -1536,14 +1568,39 @@
       var xMax = Math.ceil(rawXMax / xStep) * xStep;
 
       // Y-axis: always 0-100, ticks at clean 25-point intervals
-      var yTicks = [0, 25, 50, 75, 100];
+      // --- Dynamic y-axis ---
+      var scores = points.map(function(p) { return p.masteryScore; });
+      var minScore = scores.length ? Math.min.apply(null, scores) : 0;
+      var yMin = Math.max(0, Math.floor((minScore - 10) / 10) * 10);
+      if ((100 - yMin) < 20) { yMin = Math.max(0, 80); }
+      var yRange = 100 - yMin;
+      var yStep = yRange <= 20 ? 5 : yRange <= 40 ? 10 : 25;
+      var yTicks = [];
+      for (var yt = yMin; yt <= 100; yt += yStep) { yTicks.push(yt); }
+      if (yTicks[yTicks.length - 1] !== 100) { yTicks.push(100); }
 
-      // X-axis ticks
+      // X-axis: start from 1 (first real session), use dates where available
+      var xMin = 1;
       var xTicks = [];
-      for (var xt = 0; xt <= xMax; xt += xStep) { xTicks.push(xt); }
+      for (var xt = xStep; xt <= xMax; xt += xStep) { xTicks.push(xt); }
+      if (!xTicks.length || xTicks[0] !== xMin) { xTicks.unshift(xMin); }
 
-      function xPos(n) { return left + (n / xMax) * plotW; }
-      function yPos(n) { return top + plotH - (n / 100) * plotH; }
+      // Build a map: session number -> short date label
+      var sessionDateMap = {};
+      points.forEach(function(p) {
+        if (p.date) {
+          var d = new Date(p.date);
+          var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          sessionDateMap[p.session] = months[d.getMonth()] + ' ' + d.getDate();
+        }
+      });
+
+      // Max labels that fit without crowding (one every ~40px)
+      var maxLabels = Math.floor(plotW / 40);
+      var labelStep = (graphShowAllLabels || xTicks.length <= maxLabels) ? 1 : Math.ceil(xTicks.length / maxLabels);
+
+      function xPos(n) { return left + ((n - xMin) / Math.max(1, xMax - xMin)) * plotW; }
+      function yPos(n) { return top + plotH - ((n - yMin) / (100 - yMin)) * plotH; }
 
       // Line path
       var path = '';
@@ -1570,11 +1627,18 @@
       });
 
       // X grid lines and labels (show every other tick when there are many)
-      xTicks.forEach(function (tick) {
+      xTicks.forEach(function (tick, tickIdx) {
         var x = xPos(tick).toFixed(1);
         svg += '<line class="graph-grid-line" x1="' + x + '" y1="' + top + '" x2="' + x + '" y2="' + (height - bottom) + '"></line>';
-        if (xMax <= 10 || (tick % (xStep * 2) === 0)) {
-          svg += '<text class="graph-label" x="' + x + '" y="' + (height - bottom + 12) + '" text-anchor="middle">' + tick + '</text>';
+        if (tickIdx % labelStep === 0) {
+          var label = sessionDateMap[tick] || ('S' + tick);
+          if (graphShowAllLabels && labelStep === 1 && xTicks.length > maxLabels) {
+            svg += '<text class="graph-label" x="' + x + '" y="' + (height - bottom + 4) + '"'
+              + ' transform="rotate(45,' + x + ',' + (height - bottom + 4) + ')"'
+              + ' text-anchor="start" font-size="8">' + label + '</text>';
+          } else {
+            svg += '<text class="graph-label" x="' + x + '" y="' + (height - bottom + 12) + '" text-anchor="middle">' + label + '</text>';
+          }
         }
       });
 
@@ -1597,12 +1661,22 @@
           svg += '<path class="graph-line" d="' + path + '"></path>';
         }
         points.forEach(function (pt) {
-          svg += '<circle class="graph-dot" cx="' + xPos(pt.session).toFixed(1) + '" cy="' + yPos(pt.masteryScore).toFixed(1) + '" r="3.5"></circle>';
+          var cx = xPos(pt.session).toFixed(1);
+          var cy = yPos(pt.masteryScore).toFixed(1);
+          var dateLabel = sessionDateMap[pt.session] || ('Session ' + pt.session);
+          var accLabel = (pt.accuracy != null) ? pt.accuracy + '%' : '';
+          var fpmLabel = (pt.fpm != null) ? pt.fpm + ' facts/min' : '';
+          svg += '<circle class="graph-dot" cx="' + cx + '" cy="' + cy + '" r="3.5"></circle>';
+          svg += '<circle class="graph-dot-hit" cx="' + cx + '" cy="' + cy + '" r="10" fill="transparent"'
+            + ' data-score="' + pt.masteryScore + '"'
+            + ' data-date="' + dateLabel + '"'
+            + ' data-acc="' + accLabel + '"'
+            + ' data-fpm="' + fpmLabel + '"></circle>';
         });
       }
 
       // Axis labels
-      svg += '<text class="graph-label" x="' + (left + plotW / 2) + '" y="' + (height - 1) + '" text-anchor="middle">Sessions</text>';
+      svg += '<text class="graph-label" x="' + (left + plotW / 2) + '" y="' + (height - 1) + '" text-anchor="middle">Date</text>';
       svg += '<text class="graph-label" transform="translate(8,' + (top + plotH / 2) + ') rotate(-90)" text-anchor="middle">Score</text>';
 
       // Empty state message
@@ -1976,7 +2050,77 @@
     }
     init();
   })();
+  
+    // --- Graph show-all-dates toggle ---
+    (function() {
+      var btn = document.getElementById('graphToggleBtn');
+      if (!btn) return;
+      btn.addEventListener('click', function() {
+        graphShowAllLabels = !graphShowAllLabels;
+        btn.textContent = graphShowAllLabels ? 'Fewer dates' : 'Show all dates';
+        btn.style.opacity = graphShowAllLabels ? '1' : '0.7';
+        btn.style.color = graphShowAllLabels ? 'var(--color-primary)' : '';
+        btn.style.borderColor = graphShowAllLabels ? 'var(--color-primary)' : '';
+        renderProgressGraph();
+      });
+    })();
+
+    // --- Graph hover tooltip ---
+    (function() {
+      var tooltip = document.getElementById('graphTooltip');
+      if (!tooltip) return;
+      document.addEventListener('mousemove', function(e) {
+        var hit = e.target;
+        if (hit && hit.classList && hit.classList.contains('graph-dot-hit')) {
+          var score = hit.getAttribute('data-score');
+          var date  = hit.getAttribute('data-date');
+          var acc   = hit.getAttribute('data-acc');
+          var fpm   = hit.getAttribute('data-fpm');
+          var lines = '<span class="tt-score">' + score + '</span>';
+          lines += date;
+          if (acc)  lines += ' &middot; ' + acc;
+          if (fpm)  lines += ' &middot; ' + fpm;
+          tooltip.innerHTML = lines;
+          tooltip.classList.add('visible');
+          var tx = e.clientX + 14;
+          var ty = e.clientY - 40;
+          if (tx + 160 > window.innerWidth)  tx = e.clientX - 170;
+          if (ty < 6) ty = e.clientY + 14;
+          tooltip.style.left = tx + 'px';
+          tooltip.style.top  = ty + 'px';
+        } else {
+          tooltip.classList.remove('visible');
+        }
+      });
+      document.addEventListener('mouseleave', function() {
+        tooltip.classList.remove('visible');
+      });
+      // Touch support
+      document.addEventListener('touchstart', function(e) {
+        var hit = e.target;
+        if (hit && hit.classList && hit.classList.contains('graph-dot-hit')) {
+          var score = hit.getAttribute('data-score');
+          var date  = hit.getAttribute('data-date');
+          var acc   = hit.getAttribute('data-acc');
+          var fpm   = hit.getAttribute('data-fpm');
+          var lines = '<span class="tt-score">' + score + '</span>';
+          lines += date;
+          if (acc)  lines += ' &middot; ' + acc;
+          if (fpm)  lines += ' &middot; ' + fpm;
+          tooltip.innerHTML = lines;
+          tooltip.classList.add('visible');
+          var touch = e.touches[0];
+          tooltip.style.left = (touch.clientX + 14) + 'px';
+          tooltip.style.top  = (touch.clientY - 50) + 'px';
+          e.preventDefault();
+        } else {
+          tooltip.classList.remove('visible');
+        }
+      }, { passive: false });
+    })();
+
   </script>
   <div class="levelup-toast" id="levelupToast" aria-live="polite"></div>
+  <div class="graph-tooltip" id="graphTooltip"></div>
 </body>
 </html>
