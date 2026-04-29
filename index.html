@@ -1188,6 +1188,18 @@
         var payload = parseJwt(response.credential);
         state.googleUser = { sub: payload.sub, name: payload.name, email: payload.email, picture: payload.picture || '' };
         state.demoMode = false;
+        // Persist login across page reloads
+        try { localStorage.setItem('factflow-google-user', JSON.stringify(state.googleUser)); } catch(e) {}
+        // Migrate any existing demo progress to this Google account (first-time sign-in)
+        try {
+          var googleKey = STORAGE_KEY + state.googleUser.sub;
+          var demoKey   = STORAGE_KEY + 'demo-user';
+          var hasGoogle = !!localStorage.getItem(googleKey);
+          var demoData  = localStorage.getItem(demoKey);
+          if (!hasGoogle && demoData) {
+            localStorage.setItem(googleKey, demoData);
+          }
+        } catch(e) {}
         renderAuthUI();
       } catch (e) {
         setStatus(el.roundStatus, 'Sign-in failed. Try again.', 'bad');
@@ -1206,6 +1218,7 @@
     function signOut() {
       state.googleUser = null;
       state.demoMode = true;
+      try { localStorage.removeItem('factflow-google-user'); } catch(e) {}
       if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
       stopRound(false);
       renderAuthUI();
@@ -2045,6 +2058,17 @@
       cacheDom();
       initTheme();
       bindEvents();
+      // Restore Google session from localStorage if available
+      try {
+        var storedUser = localStorage.getItem('factflow-google-user');
+        if (storedUser) {
+          var u = JSON.parse(storedUser);
+          if (u && u.sub) {
+            state.googleUser = u;
+            state.demoMode = false;
+          }
+        }
+      } catch(e) {}
       initGoogleSignIn();
       renderAuthUI();
     }
