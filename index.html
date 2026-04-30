@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactFlow v28</title>
-  <!-- v28: Full sync audit resolution -- 412 pull-before-push, settings sync, cross-tab Drive push, non-merged state fields, unified lifecycle guard, sync instrumentation, dead code removal, mobile debug access -->
+  <title>FactFlow v11</title>
+  <!-- v11: Local-storage-only version. Moves mastery score help into an information panel to keep the graph area cleaner. -->
   <link rel="icon" type="image/png" sizes="512x512" href="favicon-512x512.png">
   <link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png">
   <link rel="icon" type="image/png" sizes="64x64"   href="favicon-64x64.png">
@@ -12,8 +12,6 @@
   <link rel="icon" type="image/png" sizes="32x32"   href="favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16"   href="favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180"      href="favicon-180x180.png">
-  <!-- Replace YOUR_CLIENT_ID with a real Google OAuth 2.0 client ID from https://console.cloud.google.com -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root, [data-theme="light"] {
       --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -42,6 +40,11 @@
     p { margin: 0; color: var(--color-text-muted); }
     button, input, select { font: inherit; color: inherit; }
     button { cursor: pointer; border: none; }
+    button, .keypad, .key-btn, .choice-chip, .btn, .btn-secondary, .btn-ghost, .icon-btn {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      touch-action: manipulation;
+    }
     input, select { width: 100%; min-height: 42px; border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent); background: var(--color-surface-2); border-radius: var(--radius-md); padding: 0.65rem 0.8rem; }
     .app { max-width: 1060px; margin: 0 auto; padding: var(--space-4); display: grid; gap: var(--space-4); }
     .header { background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 75%, black)); color: var(--color-text-inverse); border-radius: var(--radius-xl); padding: var(--space-3) var(--space-5); display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-md); }
@@ -65,17 +68,20 @@
     .choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
     .choice-chip { border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent); border-radius: var(--radius-full); padding: 0.55rem 0.7rem; background: var(--color-surface-2); text-align: center; cursor: pointer; font-size: var(--text-sm); }
     .choice-chip.active { background: var(--color-primary-highlight); border-color: color-mix(in srgb, var(--color-primary) 35%, transparent); }
-    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
+    .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
     .stat { padding: var(--space-2) var(--space-3); background: var(--color-surface-2); border: 1px solid color-mix(in srgb, var(--color-text) 6%, transparent); border-radius: var(--radius-lg); }
     .stat .label { font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .stat .value { margin-top: 0.1rem; font-size: 1.15rem; font-weight: 700; }
     .stat.time-warn   { background: var(--color-gold-highlight); transition: background 0.4s ease; }
     .stat.time-danger { background: var(--color-error-highlight); transition: background 0.4s ease; }
-    .signin-area { text-align: center; padding: var(--space-4) 0; }
-    .signin-area .google-btn-wrap { display: inline-block; min-height: 44px; }
+    .practice-subtitle-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+    .daily-quizzes { font-size: var(--text-sm); color: var(--color-text-muted); font-weight: 700; white-space: nowrap; }
+    .bar-block { margin-top: var(--space-3); }
+    .bar-label-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; margin-bottom: 0.35rem; font-size: var(--text-sm); color: var(--color-text-muted); }
+    .bar-label-main { color: var(--color-text); font-weight: 800; }
+    .bar-label-meta { font-size: var(--text-xs); font-weight: 700; color: var(--color-text-muted); }
+    .settings-item.active { background: var(--color-primary-highlight); color: var(--color-text); font-weight: 800; }
     .user-info { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--color-surface-2); border-radius: var(--radius-lg); border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
-    .user-info img { width: 32px; height: 32px; border-radius: var(--radius-full); }
-    .user-info .name { font-weight: 700; font-size: var(--text-sm); }
     .practice-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--space-4); align-items: stretch; }
     .problem-area { padding: var(--space-5) 0 var(--space-3); text-align: center; }
     .problem-text { font-size: clamp(2.4rem, 6vw, 4.5rem); font-weight: 700; letter-spacing: -0.03em; }
@@ -241,49 +247,16 @@
       box-shadow: 0 0 0 8px rgba(161, 44, 123, 0.30), 0 0 28px rgba(161, 44, 123, 0.38);
     }
 
-    /* -- Top login / reset controls -- */
-    .top-login {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      min-height: 40px;
-    }
-    .login-blurb {
-      font-size: var(--text-xs);
-      font-weight: 700;
-      color: rgba(255,255,255,0.86);
-      white-space: nowrap;
-    }
-    .google-btn-wrap.compact {
-      min-width: 150px;
-      min-height: 36px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .user-info.compact {
+    /* -- Local-only user badge -- */
+    .user-info.local-badge {
       background: rgba(255,255,255,0.12);
       border-color: rgba(255,255,255,0.18);
       color: var(--color-text-inverse);
-      padding: 0.35rem 0.45rem;
+      padding: 0.35rem 0.65rem;
       gap: 0.45rem;
-      max-width: 420px;
-    }
-    .user-info.compact .subtle {
-      color: rgba(255,255,255,0.78);
-      font-size: 0.64rem;
-      max-width: 140px;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      font-size: var(--text-xs);
+      font-weight: 700;
       white-space: nowrap;
-    }
-    .btn-ghost.tiny {
-      min-height: 30px;
-      padding: 0.35rem 0.5rem;
-      font-size: 0.7rem;
-      color: var(--color-text-inverse);
-      border-color: rgba(255,255,255,0.22);
-      background: rgba(255,255,255,0.08);
     }
 
     /* -- Streak meter -- */
@@ -408,10 +381,46 @@
       font-weight: 700;
       line-height: 1.4;
     }
+    .mastery-score-head {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+    }
+    .mastery-info-btn {
+      width: 22px;
+      height: 22px;
+      border-radius: var(--radius-full);
+      display: inline-grid;
+      place-items: center;
+      background: var(--color-surface-offset);
+      color: var(--color-text-muted);
+      border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+      font-size: 0.72rem;
+      font-weight: 900;
+      line-height: 1;
+      padding: 0;
+    }
+    .mastery-info-btn:hover {
+      color: var(--color-primary);
+      border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+      background: var(--color-primary-highlight);
+    }
     .mastery-stats {
       font-size: var(--text-xs);
       color: var(--color-text-muted);
       letter-spacing: 0.01em;
+    }
+    .mastery-formula-note {
+      display: none;
+    }
+    .mastery-chart-note {
+      padding: 0 var(--space-3) var(--space-2);
+      margin-top: -0.25rem;
+      font-size: 0.66rem;
+      line-height: 1.35;
+      color: var(--color-text-faint);
+      text-align: center;
     }
     .mastery-empty-note {
       font-size: var(--text-xs);
@@ -458,21 +467,40 @@
       .pg-cell { width: 21px; height: 21px; border-radius: 6px; font-size: 0.58rem; }
     }
     @media (max-width: 500px) {
-      .app { padding: 0.5rem; }
-      .header { border-radius: var(--radius-lg); padding: var(--space-2) var(--space-3); }
-      .metrics { grid-template-columns: repeat(3, 1fr); }
-      .problem-text { font-size: 2.2rem; }
-      .answer-input { font-size: 1.6rem; }
+      .app { padding: 0.5rem; gap: var(--space-2); }
+      .header { border-radius: var(--radius-lg); padding: 0.45rem 0.6rem; align-items: center; gap: var(--space-2); }
+      .brand { gap: 0.45rem; }
+      .logo { width: 32px; height: 32px; border-radius: 8px; }
+      .header h1 { font-size: 1rem; }
+      .header-actions { flex-wrap: nowrap; justify-content: flex-end; gap: 0.4rem; }
+      .user-info.local-badge { display: none; }
+      .icon-btn { width: 36px; height: 36px; }
+      .settings-dropdown { right: 0; min-width: min(92vw, 300px); }
+      .panel { padding: 0.65rem; border-radius: var(--radius-lg); }
+      .metrics { grid-template-columns: repeat(3, 1fr); gap: 0.45rem; }
+      .stat { padding: 0.45rem 0.5rem; }
+      .stat .label { font-size: 0.6rem; }
+      .stat .value { font-size: 1rem; }
+      .practice-subtitle-row { gap: 0.4rem; }
+      .daily-quizzes, .bar-label-row { font-size: 0.76rem; }
+      .bar-label-meta { font-size: 0.68rem; }
+      .bar-block { margin-top: 0.65rem; }
+      .streak-meter { margin-top: 0.35rem; padding: 0.42rem 0.55rem; }
+      .problem-area { padding: 0.65rem 0 0.5rem; }
+      .problem-text { font-size: clamp(2.4rem, 12vw, 3.4rem); }
+      .answer-wrap { max-width: 230px; }
+      .answer-input { min-height: 56px; font-size: 2rem; }
+      .keypad { gap: 0.45rem; margin-top: 0.65rem !important; }
+      .key-btn { min-height: 54px; padding: 0.65rem 0.3rem; font-size: 1.2rem; }
+      .row[style*="margin-top:var(--space-3)"] { margin-top: 0.65rem !important; }
+      .status-text { padding: 0.55rem 0.65rem; font-size: 0.78rem; }
       .pg-panel { padding: var(--space-2); }
       .pg-table { grid-template-columns: 27px repeat(11, 20px); grid-auto-rows: 20px; gap: 2px; padding: 0.45rem; }
       .pg-cell { width: 20px; height: 20px; border-radius: 5px; font-size: 0.54rem; }
       .pg-top-label, .pg-row-label { font-size: 0.58rem; }
-      .header { align-items: flex-start; gap: var(--space-2); }
-      .header-actions { flex-wrap: wrap; justify-content: flex-end; }
-      .login-blurb { display: none; }
-      .google-btn-wrap.compact { min-width: 120px; }
-      .user-info.compact .subtle { display: none; }
-      /* .progress-graph svg height is auto from viewBox */
+      .progress-graph svg { min-height: 130px; }
+      body.mobile-play-mode.round-active .pg-panel { display: none; }
+      body.mobile-play-mode.round-active .progress-graph-wrap { display: none; }
     }
 
     /* ──── Settings dropdown ──── */
@@ -482,13 +510,13 @@
       background: var(--color-surface);
       border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
       border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
-      padding: var(--space-2); min-width: 220px; z-index: 300;
+      padding: 0.6rem; min-width: 290px; z-index: 300;
     }
     .settings-dropdown.open { display: block; }
     .settings-section-label {
-      font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--color-text-faint); font-weight: 700;
-      padding: var(--space-2) var(--space-3) var(--space-1);
+      font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--color-text-faint); font-weight: 800;
+      padding: 0.55rem 0.55rem 0.3rem;
     }
     .settings-item {
       display: block; width: 100%; text-align: left;
@@ -497,11 +525,73 @@
       cursor: pointer;
     }
     .settings-item:hover { background: var(--color-surface-offset); }
+    .settings-item.active { background: var(--color-primary-highlight); color: var(--color-text); font-weight: 700; }
+    .settings-item-row {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) 18px;
+      align-items: center;
+      gap: 0.65rem;
+      min-height: 54px;
+      padding: 0.56rem 0.65rem;
+      border-radius: var(--radius-lg);
+      font-size: var(--text-base);
+    }
+    .settings-icon {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: var(--radius-md);
+      background: var(--color-surface-offset);
+      color: var(--color-text-muted);
+      border: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent);
+    }
+    .settings-icon svg,
+    .settings-check svg {
+      display: block;
+    }
+    .settings-title {
+      display: block;
+      font-size: 0.94rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .settings-subtitle {
+      display: block;
+      margin-top: 0.12rem;
+      font-size: 0.74rem;
+      color: var(--color-text-muted);
+      line-height: 1.25;
+    }
+    .settings-item.active .settings-icon {
+      background: color-mix(in srgb, var(--color-primary) 15%, var(--color-surface));
+      color: var(--color-primary);
+      border-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
+    }
+    .settings-check {
+      visibility: hidden;
+      color: var(--color-primary);
+      display: grid;
+      place-items: center;
+    }
+    .settings-item.active .settings-check { visibility: visible; }
+    .settings-divider {
+      height: 1px;
+      background: color-mix(in srgb, var(--color-text) 9%, transparent);
+      margin: 0.45rem 0;
+    }
     .settings-item.danger { color: var(--color-error); }
+    .settings-item.danger .settings-title { color: var(--color-error); }
     .settings-item.danger:hover { background: var(--color-error-highlight); }
-    .settings-confirm-box { padding: var(--space-2) var(--space-3) var(--space-1); }
+    .settings-confirm-box {
+      margin-top: 0.25rem;
+      padding: var(--space-2);
+      border-radius: var(--radius-lg);
+      background: var(--color-error-highlight);
+      border: 1px solid color-mix(in srgb, var(--color-error) 25%, transparent);
+    }
     .settings-confirm-box p {
-      font-size: var(--text-xs); color: var(--color-text-muted);
+      font-size: var(--text-xs); color: var(--color-text);
       margin-bottom: var(--space-2); max-width: none; line-height: 1.5;
     }
     .settings-confirm-box .settings-item { margin-bottom: var(--space-1); }
@@ -546,13 +636,83 @@
     line-height: 1.2;
   }
   .graph-dot-hit { cursor: pointer; }
+
+  /* Score information modal */
+  .info-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.36);
+    display: grid;
+    place-items: center;
+    padding: var(--space-4);
+    z-index: 1200;
+  }
+  .info-card {
+    width: min(92vw, 520px);
+    max-height: min(88vh, 680px);
+    overflow: auto;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
+    padding: var(--space-4);
+  }
+  .info-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+  .info-card h2 {
+    font-size: 1.05rem;
+  }
+  .info-card p,
+  .info-card li {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+  }
+  .info-card p {
+    margin: 0 0 var(--space-3);
+  }
+  .info-card ul {
+    margin: 0 0 var(--space-3) 1.2rem;
+    padding: 0;
+  }
+  .info-card li {
+    margin: 0.35rem 0;
+  }
+  .info-close-btn {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-full);
+    display: grid;
+    place-items: center;
+    background: var(--color-surface-offset);
+    color: var(--color-text);
+    border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
+    font-size: 1rem;
+    font-weight: 900;
+  }
+  .info-close-btn:hover {
+    background: var(--color-primary-highlight);
+    color: var(--color-primary);
+  }
 </style>
 <script>
   (function(){
-    var saved=null;
-    try{saved=localStorage.getItem('factflow-theme');}catch(e){}
-    var t=saved||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
-    document.documentElement.setAttribute('data-theme',t);
+    var pref = 'system';
+    try {
+      pref = localStorage.getItem('factflow-theme-pref') || localStorage.getItem('factflow-theme') || 'system';
+    } catch (e) {}
+    if (pref !== 'light' && pref !== 'dark' && pref !== 'system') pref = 'system';
+    var t = pref;
+    if (pref === 'system') {
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', t);
   })();
 </script>
 </head>
@@ -564,21 +724,9 @@
         <h1>FactFlow</h1>
       </div>
       <div class="header-actions">
-        <div class="top-login" id="topLogin">
-          <span class="login-blurb">Log in to save progress.</span>
-          <div id="googleSignInBtn" class="google-btn-wrap compact"></div>
-        </div>
-        <div class="user-info compact hidden" id="userInfo">
-          <img id="userPic" src="" alt="" />
-          <div>
-            <div class="name" id="userName"></div>
-            <div class="subtle" id="userEmail"></div>
-          </div>
-          <span id="syncStatus" style="font-size:0.62rem;opacity:0.8;white-space:nowrap;display:none;align-items:center;gap:3px;color:rgba(255,255,255,0.88)"></span>
-          <button type="button" class="btn-ghost tiny" id="signOutBtn">Sign out</button>
-        </div>
+        <div class="user-info local-badge">Data saved on this device</div>
 
-        <div class="settings-menu-wrap hidden" id="settingsMenuWrap">
+        <div class="settings-menu-wrap" id="settingsMenuWrap">
           <button type="button" class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"/>
@@ -586,31 +734,97 @@
             </svg>
           </button>
           <div class="settings-dropdown" id="settingsDropdown">
-            <div class="settings-section-label">Account</div>
+            <div class="settings-section-label">Appearance</div>
+            <button type="button" class="settings-item settings-item-row" id="themeLightBtn" aria-pressed="false">
+              <span class="settings-icon" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="4"></circle>
+                  <path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M4.93 19.07l1.41-1.41"></path><path d="M17.66 6.34l1.41-1.41"></path>
+                </svg>
+              </span>
+              <span class="settings-text">
+                <span class="settings-title">Light</span>
+                <span class="settings-subtitle">Bright background</span>
+              </span>
+              <span class="settings-check" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+              </span>
+            </button>
+            <button type="button" class="settings-item settings-item-row" id="themeDarkBtn" aria-pressed="false">
+              <span class="settings-icon" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+              </span>
+              <span class="settings-text">
+                <span class="settings-title">Dark</span>
+                <span class="settings-subtitle">Lower brightness</span>
+              </span>
+              <span class="settings-check" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+              </span>
+            </button>
+            <button type="button" class="settings-item settings-item-row" id="themeSystemBtn" aria-pressed="false">
+              <span class="settings-icon" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="12" rx="2"></rect>
+                  <path d="M8 20h8"></path><path d="M12 16v4"></path>
+                </svg>
+              </span>
+              <span class="settings-text">
+                <span class="settings-title">Match device</span>
+                <span class="settings-subtitle">Use system setting</span>
+              </span>
+              <span class="settings-check" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+              </span>
+            </button>
+
+            <div class="settings-section-label">Mobile</div>
+            <button type="button" class="settings-item settings-item-row" id="hapticsToggleBtn" aria-pressed="true">
+              <span class="settings-icon" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="7" y="2" width="10" height="20" rx="2"></rect>
+                  <path d="M11 18h2"></path><path d="M4 8l-2 2 2 2"></path><path d="M20 8l2 2-2 2"></path>
+                </svg>
+              </span>
+              <span class="settings-text">
+                <span class="settings-title">Haptic feedback</span>
+                <span class="settings-subtitle" id="hapticsStatusText">On</span>
+              </span>
+              <span class="settings-check" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+              </span>
+            </button>
+
+            <div class="settings-divider"></div>
+            <div class="settings-section-label">Progress</div>
             <div id="resetNormal">
-              <button type="button" class="settings-item danger" id="settingsResetBtn">Reset all progress...</button>
+              <button type="button" class="settings-item settings-item-row danger" id="settingsResetBtn">
+                <span class="settings-icon" aria-hidden="true">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path>
+                  </svg>
+                </span>
+                <span class="settings-text">
+                  <span class="settings-title">Reset all progress...</span>
+                  <span class="settings-subtitle">Delete saved results on this device</span>
+                </span>
+                <span class="settings-check" aria-hidden="true"></span>
+              </button>
             </div>
             <div id="resetConfirm" class="settings-confirm-box" style="display:none;">
-              <p>This permanently deletes all your saved progress. There is no undo.</p>
+              <p>This permanently deletes all saved progress. There is no undo.</p>
               <button type="button" class="settings-item danger" id="settingsConfirmResetBtn">Yes, delete everything</button>
               <button type="button" class="settings-item" id="settingsCancelResetBtn">Cancel</button>
             </div>
-            <div class="settings-section-label" style="margin-top:var(--space-1)">Diagnostics</div>
-            <button type="button" class="settings-item" id="settingsDebugBtn">Sync Debug: off</button>
           </div>
         </div>
-        <button type="button" class="icon-btn" id="themeToggle" aria-label="Toggle theme" title="Toggle theme">◐</button>
       </div>
     </header>
 
     <!-- ═══ PRACTICE VIEW ═══ -->
     <section id="practiceView">
-      <!-- Sign-in panel is hidden because practice opens in demo mode by default. -->
-      <div class="panel hidden" id="signInPanel">
-        <p class="subtle hidden" id="demoNote"></p>
-        <button type="button" class="btn-ghost hidden" id="useDemoBtn">Use demo mode</button>
-      </div>
-
       <!-- Graduation banner -->
       <div class="graduate-banner" id="graduateBanner"></div>
 
@@ -622,28 +836,41 @@
             <div class="row" style="justify-content:space-between;align-items:center;">
               <div>
                 <h2 id="practiceTitle">Practice</h2>
-                <p class="subtle" id="practiceSubtitle">Ready</p>
+                <div class="practice-subtitle-row">
+                  <p class="subtle" id="practiceSubtitle">Ready</p>
+                  <span class="daily-quizzes">Today's Quizzes: <span id="todaysQuizValue">0</span></span>
+                </div>
               </div>
               <span class="pill" id="roundStatePill">Ready</span>
             </div>
-            <div class="streak-meter" aria-label="Facts per minute" style="margin-top:var(--space-3);margin-bottom:0;">
-              <div class="streak-track">
-                <div class="fpm-fill" id="fpmFill"></div>
-              </div>
-              <span class="fpm-runner" id="fpmRunner" aria-hidden="true">🏃</span>
-            </div>
-            <div class="metrics" style="margin-top:var(--space-2);">
+            <div class="metrics" style="margin-top:var(--space-3);">
               <div class="stat" id="timeLeftStat"><div class="label">Time left</div><div class="value" id="timeLeftValue">60</div></div>
               <div class="stat"><div class="label">Correct</div><div class="value" id="correctValue">0</div></div>
-              <div class="stat"><div class="label">Session Best</div><div class="value" id="streakValue">0</div></div>
-              <div class="stat"><div class="label">Personal Best</div><div class="value" id="personalBestValue">-</div></div>
-              <div class="stat"><div class="label">Quizzes</div><div class="value" id="quizCountValue">0</div></div>
+              <div class="stat"><div class="label">Speed</div><div class="value" id="speedValue">0.0/min</div></div>
             </div>
-            <div class="streak-meter" aria-label="Streak power">
-              <div class="streak-track">
-                <div class="streak-fill" id="streakFill"></div>
+            <div class="bar-block">
+              <div class="bar-label-row">
+                <span class="bar-label-main">Streak: <span id="currentStreakValue">0</span> in a row</span>
+                <span class="bar-label-meta">Best this round: <span id="streakValue">0</span> | Best ever: <span id="personalBestValue">-</span></span>
               </div>
-              <span class="streak-flame" id="streakFlame" aria-hidden="true">🔥</span>
+              <div class="streak-meter" aria-label="Streak power">
+                <div class="streak-track">
+                  <div class="streak-fill" id="streakFill"></div>
+                </div>
+                <span class="streak-flame" id="streakFlame" aria-hidden="true">🔥</span>
+              </div>
+            </div>
+            <div class="bar-block">
+              <div class="bar-label-row">
+                <span class="bar-label-main">Speed: <span id="speedBarValue">0.0</span> facts/min</span>
+                <span class="bar-label-meta">Best speed: <span id="bestSpeedValue">-</span></span>
+              </div>
+              <div class="streak-meter" aria-label="Facts per minute" style="margin-top:0;margin-bottom:0;">
+                <div class="streak-track">
+                  <div class="fpm-fill" id="fpmFill"></div>
+                </div>
+                <span class="fpm-runner" id="fpmRunner" aria-hidden="true">🏃</span>
+              </div>
             </div>
           </div>
 
@@ -653,13 +880,13 @@
             </div>
             <div class="answer-wrap">
               <label class="sr-only" for="answerInput">Type answer</label>
-              <input id="answerInput" class="answer-input" inputmode="numeric" autocomplete="off" placeholder="?" disabled />
+              <input id="answerInput" class="answer-input" inputmode="none" autocomplete="off" placeholder="?" readonly disabled />
               <div class="feedback-pill" id="feedbackPill">Correct</div>
             </div>
             <div class="timeout-overlay" id="timeoutOverlay">
               <div class="answer-reveal" id="timeoutAnswer"></div>
               <p class="subtle">Type the answer shown to continue</p>
-              <input id="timeoutInput" class="answer-input" inputmode="numeric" autocomplete="off" placeholder="Type it" style="max-width:180px;margin:0 auto;" />
+              <input id="timeoutInput" class="answer-input" inputmode="none" autocomplete="off" placeholder="Type it" readonly style="max-width:180px;margin:0 auto;" />
             </div>
             <div class="cooldown-banner" id="cooldownBanner"></div>
             <div class="keypad" aria-label="Number keypad" style="margin-top:var(--space-3);">
@@ -678,7 +905,7 @@
             <div class="row" style="margin-top:var(--space-3);justify-content:center;">
               <button type="button" class="btn" id="startBtn" disabled>Start Round</button>
             </div>
-            <div class="status-text" id="roundStatus">Sign in, then start a round.</div>
+            <div class="status-text" id="roundStatus">Press Start when ready.</div>
           </div>
         </div>
 
@@ -692,7 +919,7 @@
             <span><span class="swatch lk"></span> Locked</span>
           </div>
           <div class="progress-graph-wrap">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3)"><h3 style="margin-bottom:0">Mastery over time</h3><button type="button" id="graphToggleBtn" class="btn-ghost" style="font-size:0.68rem;padding:0.2rem 0.5rem;min-height:auto;border-radius:var(--radius-full);opacity:0.7;letter-spacing:0.03em" title="Toggle between condensed and full label view">Show all dates</button></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3)"><h3 style="margin-bottom:0">Mastery over time</h3><button type="button" id="graphToggleBtn" class="btn-ghost" style="font-size:0.68rem;padding:0.2rem 0.5rem;min-height:auto;border-radius:var(--radius-full);opacity:0.7;letter-spacing:0.03em" title="Toggle between recent and all saved quiz results">Show all results</button></div>
             <div class="progress-graph" id="progressGraph" aria-label="Progress Graph"></div>
           </div>
         </aside>
@@ -700,20 +927,63 @@
     </section>
   </div>
 
+
+  <div class="info-overlay hidden" id="scoreInfoOverlay" role="dialog" aria-modal="true" aria-labelledby="scoreInfoTitle">
+    <div class="info-card" role="document">
+      <div class="info-card-header">
+        <h2 id="scoreInfoTitle">How the mastery score works</h2>
+        <button type="button" class="info-close-btn" id="scoreInfoCloseBtn" aria-label="Close information">x</button>
+      </div>
+      <p>Your score is mostly based on how many multiplication facts you have mastered.</p>
+      <ul>
+        <li>Fluent facts count fully.</li>
+        <li>In-progress facts count partly.</li>
+        <li>Accuracy and speed add a small bonus.</li>
+        <li>The bonus grows as you master more facts, so progress matters most.</li>
+      </ul>
+      <p>The graph shows your most recent 10 quiz results by default. Use "Show all results" to see everything saved on this device.</p>
+      <p>The chart zooms in to show progress clearly, but the mastery score is always out of 100.</p>
+      <div class="row" style="justify-content:flex-end;margin-top:var(--space-3);">
+        <button type="button" class="btn" id="scoreInfoDoneBtn">Got it</button>
+      </div>
+    </div>
+  </div>
+
   <div class="levelup-toast" id="levelupToast" aria-live="polite"></div>
   <div class="graph-tooltip" id="graphTooltip"></div>
-  <!-- v28: Sync debug panel -->
-  <div id="syncDebugPanel" class="hidden" style="position:fixed;bottom:8px;right:8px;width:380px;max-height:360px;background:#1a1a2e;color:#e0e0e0;border:1px solid #444;border-radius:8px;padding:8px 10px;font-size:0.7rem;font-family:monospace;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.5);overflow:hidden;"></div>
   <script>
   (function () {
     'use strict';
 
     // ═══════════════════════════ CONFIG ═══════════════════════════
-    var GOOGLE_CLIENT_ID = '220590044784-6bohsjumu2r67ds92lhmfdubhh3qen5i.apps.googleusercontent.com';
     var STORAGE_KEY         = 'factflow-progress-';  // localStorage key prefix
-    var SETTINGS_KEY       = 'factflow-settings';    // Bug M6 fix: persist teacher settings
+    var SETTINGS_KEY       = 'factflow-settings';    // persist teacher settings
+    var THEME_PREF_KEY    = 'factflow-theme-pref'; // 'light', 'dark', or 'system'
+    var HAPTICS_KEY       = 'factflow-haptics-enabled'; // mobile haptic preference
     var STARTING_TABLE = 2;   // First times table (default: 2)
     var MAX_TABLE      = 12;  // Last times table  (default: 12)
+
+    // Speed bar target. Change this one number to adjust how hard it is to fill the runner speed bar.
+    // Lower number = easier to fill. Higher number = harder to fill.
+    // Examples: 24 = easier, 30 = recommended default, 36 = more challenging.
+    var SPEED_FULL_BAR_FPM = 30;
+
+    // Overall mastery score weights. The score is mostly grid progress.
+    // In-progress facts count as partial progress, while accuracy and speed add only a small progress-gated bonus.
+    var MASTERY_TOTAL_FACTS = (MAX_TABLE - STARTING_TABLE + 1) * (MAX_TABLE - STARTING_TABLE + 1);
+    var MASTERY_IN_PROGRESS_WEIGHT = 0.5;
+    var MASTERY_PROGRESS_WEIGHT = 0.85;
+    var MASTERY_PERFORMANCE_BONUS_WEIGHT = 0.15;
+    var MASTERY_SPEED_TARGET_FPM = SPEED_FULL_BAR_FPM;
+    var MASTERY_SCORE_FORMULA_VERSION = 'grid-progress-v1';
+
+    // Mastery graph display. Default view shows the most recent completed quizzes.
+    // Change this number if you want the graph to show more or fewer recent quiz results by default.
+    var GRAPH_DEFAULT_VISIBLE_RESULTS = 10;
+
+    // Mobile haptic feedback. Default is on. Students can turn it off in Settings.
+    // Only works on devices and browsers that support navigator.vibrate.
+    var HAPTICS_DEFAULT_ON = true;
 
     // Teacher settings are edited here in the code instead of shown in the student UI.
     var APP_SETTINGS = {
@@ -730,10 +1000,7 @@
     };
 
     // ═══════════════════════════ STATE ═══════════════════════════
-    // Bug M6 fix: use loadSettings() so saved teacher settings are restored on page load.
     var state = {
-      googleUser: null,
-      demoMode: true,
       settings: loadSettings()
     };
 
@@ -746,90 +1013,13 @@
     var cooldownFactKey = null;  // Bug M1 fix: track which fact triggered the cooldown
     var wrongBurstCount = 0;
     var wrongBurstStart = 0;
-    var lastTheme = (function(){
-      var saved = null;
-      try { saved = localStorage.getItem('factflow-theme'); } catch(e) {}
-      return saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    })();
-    var graphShowAllLabels = false; // Toggle: show all x-axis date labels
-    var driveTokenClient  = null;  // Google OAuth2 token client for Drive API
-    var driveAccessToken  = null;  // In-memory access token (expires in ~1hr)
-    var driveTokenRequestInFlight = false; // Prevent repeated Google account popups
-    var driveFileId       = null;  // Cached Drive file ID for factflow-progress.json
-    var syncPending       = false; // Prevents overlapping sync calls
-    var DRIVE_TOKEN_CACHE_KEY = 'factflow-drive-token';
-    var DRIVE_TOKEN_EXPIRY_KEY  = 'factflow-drive-token-expiry';
-    var syncDebounceTimer       = null;
-    var localProgressDirty = false; // Only upload progress after this tab changes it
+
+    var graphShowAllResults = false; // Toggle: show all saved quiz results instead of only recent results
     var startBtnCooldown = null; // Post-round delay interval
-    
-    // PHASE 2: Atomic sync and retry mechanism
-    var syncRetryEntry = null;  // D3 fix: single retry entry (was always single-element)
-    var syncRetryTimer = null; // Timer for exponential backoff retries
-    var MAX_SYNC_RETRIES = 3; // Give up after 3 retries
-    var SYNC_RETRY_BACKOFF_BASE_MS = 2000; // Start at 2 seconds, then 4s, 8s
-    var driveFileEtag = null; // ETag of last-known Drive file state, used for conflict detection
-    var TOKEN_EXPIRY_WARN_MS = 5 * 60 * 1000; // Warn 5 min before token expiry
-    var pageUnloadSyncing = false; // P3 fix: single guard for pagehide+beforeunload double-fire
-    // -- v28: Sync instrumentation --
-    var syncDebug = false;               // Toggle with Ctrl+Shift+D
-    var syncLog = [];                    // Ring buffer of sync events
-    var MAX_SYNC_LOG = 200;
-    function addSyncLog(action, detail) {
-      var entry = { at: new Date().toISOString(), ts: Date.now(), action: action, detail: detail };
-      syncLog.push(entry);
-      if (syncLog.length > MAX_SYNC_LOG) syncLog.shift();
-      if (syncDebug) {
-        if (typeof console !== 'undefined' && console.log) {
-          console.log('[SyncTrace]', entry.at, action, detail);
-        }
-        renderSyncDebugPanel();
-      }
-    }
-    function toggleSyncDebug() {
-      syncDebug = !syncDebug;
-      var dbgEl = document.getElementById('syncDebugPanel');
-      if (dbgEl) {
-        dbgEl.classList.toggle('hidden', !syncDebug);
-        if (syncDebug) renderSyncDebugPanel();
-      }
-      try { localStorage.setItem('factflow-sync-debug', syncDebug ? '1' : ''); } catch(e) {}
-    }
-    function renderSyncDebugPanel() {
-      var el = document.getElementById('syncDebugPanel');
-      if (!el || !syncDebug) return;
-      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><strong>Sync Trace</strong><button id="syncDebugClearBtn" style="font-size:0.7rem;padding:2px 8px;border:1px solid #666;border-radius:4px;background:transparent;color:#ccc;cursor:pointer">Clear</button></div>';
-      html += '<div style="font-size:0.65rem;font-family:monospace;max-height:300px;overflow-y:auto;line-height:1.6">';
-      var entries = syncLog.slice().reverse();
-      if (!entries.length) { html += '<span style="opacity:0.5">No sync events yet</span>'; }
-      entries.forEach(function(e) {
-        var color = '#8f8';
-        if (e.detail && (e.detail.indexOf('error') !== -1 || e.detail.indexOf('fail') !== -1 || e.detail.indexOf('Error') !== -1)) color = '#f88';
-        else if (e.detail && (e.detail.indexOf('warn') !== -1 || e.detail.indexOf('Conflict') !== -1)) color = '#ff8';
-        html += '<div style="color:' + color + '"><span style="opacity:0.6">' + (e.at ? e.at.slice(11, 23) : '') + '</span> <b>' + e.action + '</b> ' + (e.detail || '') + '</div>';
-      });
-      html += '</div>';
-      el.innerHTML = html;
-      var clearBtn = document.getElementById('syncDebugClearBtn');
-      if (clearBtn) clearBtn.addEventListener('click', function() { syncLog = []; renderSyncDebugPanel(); });
-    }
 
     // ═══════════════════════════ DOM REFS ═══════════════════════════
     var el = {};
     function cacheDom() {
-      el.themeToggle = document.getElementById('themeToggle');
-      el.topLogin = document.getElementById('topLogin');
-      el.practiceView = document.getElementById('practiceView');
-      el.signInPanel = document.getElementById('signInPanel');
-      el.googleSignInBtn = document.getElementById('googleSignInBtn');
-      el.demoNote = document.getElementById('demoNote');
-      el.useDemoBtn = document.getElementById('useDemoBtn');
-      el.userInfo = document.getElementById('userInfo');
-      el.userPic = document.getElementById('userPic');
-      el.userName = document.getElementById('userName');
-      el.userEmail = document.getElementById('userEmail');
-      el.signOutBtn  = document.getElementById('signOutBtn');
-      el.syncStatus  = document.getElementById('syncStatus');
       el.graduateBanner = document.getElementById('graduateBanner');
       el.practiceLayout = document.getElementById('practiceLayout');
       el.practiceTitle = document.getElementById('practiceTitle');
@@ -837,14 +1027,27 @@
       el.roundStatePill = document.getElementById('roundStatePill');
       el.timeLeftValue = document.getElementById('timeLeftValue');
       el.correctValue = document.getElementById('correctValue');
+      el.speedValue = document.getElementById('speedValue');
+      el.speedBarValue = document.getElementById('speedBarValue');
       el.streakValue = document.getElementById('streakValue');
+      el.currentStreakValue = document.getElementById('currentStreakValue');
       el.personalBestValue = document.getElementById('personalBestValue');
+      el.bestSpeedValue = document.getElementById('bestSpeedValue');
+      el.todaysQuizValue = document.getElementById('todaysQuizValue');
       el.settingsMenuWrap = document.getElementById('settingsMenuWrap');
       el.settingsBtn = document.getElementById('settingsBtn');
       el.settingsDropdown = document.getElementById('settingsDropdown');
       el.settingsResetBtn = document.getElementById('settingsResetBtn');
       el.settingsConfirmResetBtn = document.getElementById('settingsConfirmResetBtn');
       el.settingsCancelResetBtn = document.getElementById('settingsCancelResetBtn');
+      el.themeLightBtn = document.getElementById('themeLightBtn');
+      el.themeDarkBtn = document.getElementById('themeDarkBtn');
+      el.themeSystemBtn = document.getElementById('themeSystemBtn');
+      el.hapticsToggleBtn = document.getElementById('hapticsToggleBtn');
+      el.hapticsStatusText = document.getElementById('hapticsStatusText');
+      el.scoreInfoOverlay = document.getElementById('scoreInfoOverlay');
+      el.scoreInfoCloseBtn = document.getElementById('scoreInfoCloseBtn');
+      el.scoreInfoDoneBtn = document.getElementById('scoreInfoDoneBtn');
       el.levelupToast = document.getElementById('levelupToast');
       el.problemText = document.getElementById('problemText');
       el.answerInput = document.getElementById('answerInput');
@@ -862,7 +1065,6 @@
       el.streakFlame = document.getElementById('streakFlame');
       el.fpmFill = document.getElementById('fpmFill');
       el.fpmRunner = document.getElementById('fpmRunner');
-      el.quizCountValue = document.getElementById('quizCountValue');
       el.timeLeftStat = document.getElementById('timeLeftStat');
       el.keyButtons = Array.from(document.querySelectorAll('.key-btn'));
     }
@@ -918,13 +1120,11 @@
 
     // ═══════════════════════════ PROGRESS ═══════════════════════════
     function getUserId() {
-      if (state.googleUser) return state.googleUser.sub;
-      if (state.demoMode) return 'demo-user';
-      return null;
+      return 'local-user';
     }
 
     function defaultProgress() {
-      return { currentTable: STARTING_TABLE, factStats: {}, sessionsCompleted: 0, sessionHistory: [], allTimeBestStreak: 0 };
+      return { currentTable: STARTING_TABLE, factStats: {}, sessionsCompleted: 0, sessionHistory: [], allTimeBestStreak: 0, allTimeBestFpm: 0, dailyQuizCounts: {} };
     }
 
     function loadProgress() {
@@ -939,29 +1139,54 @@
         if (!p.sessionsCompleted) p.sessionsCompleted = 0;
         if (!p.sessionHistory) p.sessionHistory = [];
         if (p.allTimeBestStreak == null) p.allTimeBestStreak = 0;
+        if (p.allTimeBestFpm == null) p.allTimeBestFpm = 0;
+        if (!p.dailyQuizCounts) p.dailyQuizCounts = {};
         return p;
       } catch (e) { return defaultProgress(); }
     }
-
-    var syncPendingSnapshot = null; // Snapshot of progress JSON at debounce time (P1 fix)
 
     function saveProgressToStorage(progress) {
       var uid = getUserId();
       if (!uid) return;
       progress.updatedAt = new Date().toISOString();
       progress.settings = copySettings(state.settings);
-      var json = JSON.stringify(progress);
-      localStorage.setItem(STORAGE_KEY + uid, json);
-      localProgressDirty = true;
+      localStorage.setItem(STORAGE_KEY + uid, JSON.stringify(progress));
+    }
 
-      if (state.googleUser) {
-        clearTimeout(syncDebounceTimer);
-        // P1 fix: snapshot the JSON now so upload reads consistent data
-        syncPendingSnapshot = json;
-        syncDebounceTimer = setTimeout(function () {
-          triggerDriveSync();
-        }, 600);
+    function getLocalDateKey(date) {
+      var d = date || new Date();
+      var y = d.getFullYear();
+      var mNum = d.getMonth() + 1;
+      var dNum = d.getDate();
+      var m = mNum < 10 ? '0' + mNum : String(mNum);
+      var day = dNum < 10 ? '0' + dNum : String(dNum);
+      return y + '-' + m + '-' + day;
+    }
+
+    function getTodaysQuizCount(progress) {
+      var p = progress || loadProgress();
+      if (!p.dailyQuizCounts) p.dailyQuizCounts = {};
+      return p.dailyQuizCounts[getLocalDateKey()] || 0;
+    }
+
+    function updateTodaysQuizDisplay(progress) {
+      if (el.todaysQuizValue) el.todaysQuizValue.textContent = String(getTodaysQuizCount(progress));
+    }
+
+    function getBestSpeedText(progress) {
+      var p = progress || loadProgress();
+      var best = Number(p.allTimeBestFpm || 0);
+      if (!best && p.sessionHistory && p.sessionHistory.length) {
+        p.sessionHistory.forEach(function (item) {
+          var f = Number(item.fpm || 0);
+          if (f > best) best = f;
+        });
       }
+      return best > 0 ? best.toFixed(1) + '/min' : '-';
+    }
+
+    function updateBestSpeedDisplay(progress) {
+      if (el.bestSpeedValue) el.bestSpeedValue.textContent = getBestSpeedText(progress);
     }
 
     function getFactStats(table, second) {
@@ -1179,114 +1404,19 @@
       return items[items.length - 1];
     }
 
-    // ═══════════════════════════ GOOGLE SIGN-IN ═══════════════════════════
-    var googleSignInInitialized = false;  // Prevent duplicate initialization
-    
-    function initGoogleSignIn() {
-      if (googleSignInInitialized) return;  // Only initialize once
-      
-      var btn = el.googleSignInBtn;
-      if (!btn) return;
-      if (GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID') === 0) {
-        btn.innerHTML = '<span class="subtle" style="color:rgba(255,255,255,0.82);font-size:0.7rem;">Google login not set up</span>';
-        return;
-      }
-      function waitForGis(cb, n) {
-        n = n || 0;
-        if (window.google && window.google.accounts && window.google.accounts.id) { cb(); return; }
-        if (n > 50) return;
-        setTimeout(function () { waitForGis(cb, n + 1); }, 200);
-      }
-      waitForGis(function () {
-        // Initialize with auto_select - let Google handle silent sign-in for existing sessions
-        var options = {
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleSignIn,
-          auto_select: true,
-          cancel_on_tap_outside: false
-        };
-        google.accounts.id.initialize(options);
-        
-        // Don't call prompt() here - it causes the unwanted account picker on page reload
-        // Instead, only show the rendered button, which user can click if needed
-        // Google's auto_select will handle silent sign-in if a valid session exists
-        
-        google.accounts.id.renderButton(btn, { theme: 'outline', size: 'large', type: 'standard', text: 'signin_with' });
-        googleSignInInitialized = true;
-      });
-    }
-
-    function handleGoogleSignIn(response) {
-      try {
-        var payload = parseJwt(response.credential);
-        state.googleUser = { sub: payload.sub, name: payload.name, email: payload.email, picture: payload.picture || '' };
-        state.demoMode = false;
-        // Persist login across page reloads
-        try { localStorage.setItem('factflow-google-user', JSON.stringify(state.googleUser)); } catch(e) {}
-        // Note: demo progress is NOT pre-migrated here. smartMergeProgress (called by
-        // loadProgressFromDrive below) already handles merging local-only facts correctly
-        // when Drive has no data on first sign-in. Pre-migrating here was dead code
-        // because loadProgressFromDrive immediately overwrote the key anyway (Bug C1).
-        initDriveTokenClient();
-        startTokenExpiryCheck();
-        getOrRefreshDriveToken('load', function () {
-          loadProgressFromDrive();
-          startPeriodicSync();
-        }, true);
-        renderAuthUI();
-      } catch (e) {
-        setStatus(el.roundStatus, 'Sign-in failed. Try again.', 'bad');
-      }
-    }
-
-    function parseJwt(token) {
-      var base64Url = token.split('.')[1];
-      var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      var json = decodeURIComponent(atob(base64).split('').map(function (c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-      }).join(''));
-      return JSON.parse(json);
-    }
-
-    function signOut() {
-      // Revoke token with Google before clearing
-      if (driveAccessToken) {
-        // Bug H7 fix: drop no-cors so errors surface properly.
-        // With no-cors the response is always opaque, making success/failure
-        // indistinguishable and silently swallowing network/CORS failures.
-        // Revocation is best-effort; we proceed with local sign-out regardless.
-        fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(driveAccessToken), {
-          method: 'POST'
-        }).catch(function () {});  // network/revocation failures are non-fatal
-      }
-
-      state.googleUser = null;
-      state.demoMode   = true;
-      driveAccessToken = null;
-      driveFileId      = null;
-
-      try { localStorage.removeItem('factflow-google-user'); } catch (e) {}
-      clearDriveTokenStorage();
-
-      if (window.google && google.accounts && google.accounts.id) {
-        google.accounts.id.disableAutoSelect();
-      }
-      stopPeriodicSync();
-      stopRound(false);
-      renderAuthUI();
-    }
-
     // ═══════════════════════════ ROUND MANAGEMENT ═══════════════════════════
     function startRound() {
       if (!getUserId()) return;
       stopRound(false);
       var progress = loadProgress();
       var model = getActiveModel(progress);
+      document.body.classList.add('round-active');
       round = {
         focusTable: model.table,
         orderMode: state.settings.orderMode,
         durationSec: state.settings.durationSec,
         timeoutSec: state.settings.timeoutSec,
+        startedAt: Date.now(),
         correct: 0, attempted: 0, streak: 0, bestStreak: 0,
         currentProblem: null, problemStartTime: 0,
         hasRecordedWrong: false, timeoutsTriggered: 0,
@@ -1300,15 +1430,16 @@
       hideTimeoutOverlay();
       hideCooldown();
       hideGraduateBanner();
-      roundEndsAt = Date.now() + round.durationSec * 1000;
+      roundEndsAt = round.startedAt + round.durationSec * 1000;
       el.answerInput.disabled = false;
       el.answerInput.value = '';
       el.timeoutInput.value = '';
       el.timeoutInput.disabled = true;
       el.correctValue.textContent = '0';
       el.streakValue.textContent = '0';
+      if (el.currentStreakValue) el.currentStreakValue.textContent = '0';
       updateStreakMeter(0);
-      updateFpmMeter(0);
+      updateSpeedUi(0);
       if (el.personalBestValue) {
         var startPb = loadProgress().allTimeBestStreak || 0;
         el.personalBestValue.textContent = startPb > 0 ? String(startPb) : '-';
@@ -1322,6 +1453,8 @@
     }
 
     function stopRound(save) {
+      var finalFpm = (save && round) ? getRoundFpm(round) : 0;
+      document.body.classList.remove('round-active');
       clearInterval(roundTimer); roundTimer = null;
       clearTimeout(timeoutTimer); timeoutTimer = null;
       hideTimeoutOverlay();
@@ -1330,11 +1463,13 @@
       el.timeoutInput.disabled = true;
       setRoundPill('Ready');
       updateStreakMeter(0);
-      updateFpmMeter(0);
       if (save && round) {
         finalizeRound();
+        buzz(80);
+        updateSpeedUi(finalFpm);
         beginStartCooldown();
       } else {
+        updateSpeedUi(0);
         if (startBtnCooldown) { clearInterval(startBtnCooldown); startBtnCooldown = null; }
         el.startBtn.textContent = 'Start Round';
       }
@@ -1350,8 +1485,7 @@
       if (!round) return;
       var left = Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000));
       el.timeLeftValue.textContent = String(left);
-      var elapsed = round.durationSec - left;
-      if (elapsed > 0) updateFpmMeter((round.correct / elapsed) * 60);
+      updateSpeedUi(getLiveFpm());
       if (el.timeLeftStat) {
         var isDanger = left > 0 && left <= Math.round(round.durationSec / 10);
         var isWarn   = left > 0 && !isDanger && left <= Math.round(round.durationSec / 3);
@@ -1378,7 +1512,7 @@
       el.problemText.textContent = p.left + ' \u00d7 ' + p.right;
       el.answerInput.value = '';
       el.answerInput.disabled = false;
-      el.answerInput.focus();
+      focusIfDesktop(el.answerInput);
       el.timeoutInput.value = '';
       el.timeoutInput.disabled = true;
 
@@ -1392,10 +1526,11 @@
       updateFactStats(round.currentProblem.table, round.currentProblem.second, false, ms, true);
       var answer = round.currentProblem.answer;
       el.timeoutAnswer.textContent = round.currentProblem.left + ' \u00d7 ' + round.currentProblem.right + ' = ' + answer;
+      buzz([50, 30, 50]);
       el.timeoutOverlay.classList.add('active');
       el.timeoutInput.disabled = false;
       el.timeoutInput.value = '';
-      el.timeoutInput.focus();
+      focusIfDesktop(el.timeoutInput);
       el.answerInput.disabled = true;
     }
 
@@ -1408,6 +1543,7 @@
       if (numeric === expected) {
         round.attempted++;
         round.streak = 0;
+        if (el.currentStreakValue) el.currentStreakValue.textContent = '0';
         updateStreakMeter(0);
         hideTimeoutOverlay();
         nextProblem();
@@ -1436,8 +1572,11 @@
         round.bestStreak = Math.max(round.bestStreak, round.streak);
         el.correctValue.textContent = String(round.correct);
         el.streakValue.textContent = String(round.bestStreak);
+        if (el.currentStreakValue) el.currentStreakValue.textContent = String(round.streak);
         updateStreakMeter(round.streak);
+        updateSpeedUi(getLiveFpm());
         checkMidRoundGraduation();
+        buzz(15);
         flashGlow('good');
         nextProblem();
       } else if (String(expected).startsWith(raw)) {
@@ -1447,6 +1586,7 @@
           round.hasRecordedWrong = true;
           round.attempted++;
           round.streak = 0;
+          if (el.currentStreakValue) el.currentStreakValue.textContent = '0';
           updateStreakMeter(0);
           updateFactStats(round.currentProblem.table, round.currentProblem.second, false, Date.now() - round.problemStartTime, false);
         }
@@ -1465,6 +1605,7 @@
           wrongBurstCount = 0; wrongBurstStart = 0;
           setTimeout(endCooldown, 3000);
         }
+        buzz([35, 30, 35]);
         flashGlow('bad');
         el.answerInput.value = '';
       }
@@ -1474,7 +1615,7 @@
       cooldownUntil = 0;
       cooldownFactKey = null;  // Bug M1 fix
       hideCooldown();
-      if (round) { el.answerInput.disabled = false; el.answerInput.focus(); }
+      if (round) { el.answerInput.disabled = false; focusIfDesktop(el.answerInput); }
     }
 
     function finalizeRound() {
@@ -1487,7 +1628,8 @@
         if (el.personalBestValue) el.personalBestValue.textContent = String(round.bestStreak);
       }
       recordSessionComplete(progress);
-      if (el.quizCountValue) el.quizCountValue.textContent = String(progress.sessionsCompleted || 0);
+      updateTodaysQuizDisplay(progress);
+      updateBestSpeedDisplay(progress);
       var msg = 'Done! ' + round.correct + ' correct. ';
       if (graduated) {
         graduate(progress);
@@ -1497,7 +1639,6 @@
         el.graduateBanner.textContent = 'You mastered \u00d7' + (newTable - 1) + '! Now working on \u00d7' + newTable + '.';
         el.graduateBanner.classList.add('active');
       }
-      triggerDriveSync();
       msg += 'Active through \u00d7' + model.maxSecond + '.';
       setStatus(el.roundStatus, msg, graduated ? 'good' : '');
       renderProgressGrid();
@@ -1539,36 +1680,93 @@
       }
       if (input === el.timeoutInput) handleTimeoutInput();
       else handleAnswerInput();
-      input.focus();
+      focusIfDesktop(input);
     }
 
 
     // ═══════════════════════════ PROGRESS GRAPH ═══════════════════════════
-    function getLevelsPassed(progress) {
-      var count = 0;
+    function isFactMastered(stats) {
+      return stats && stats.shown >= 4 && stats.mastery >= 0.80;
+    }
+
+    function getMasteryBreakdown(progress) {
+      var fluent = 0;
+      var inProgress = 0;
+      var factStats = progress.factStats || {};
+
       for (var t = STARTING_TABLE; t <= MAX_TABLE; t++) {
         for (var s = STARTING_TABLE; s <= MAX_TABLE; s++) {
           var key = t + 'x' + s;
-          var stats = progress.factStats[key] || blankStats();
-          if (stats.shown >= 4 && stats.mastery >= 0.80) count++;
+          var stats = factStats[key] || blankStats();
+          if (isFactMastered(stats)) {
+            fluent++;
+          } else if (stats.shown > 0) {
+            inProgress++;
+          }
         }
       }
-      return count;
+
+      return {
+        fluent: fluent,
+        inProgress: inProgress,
+        total: MASTERY_TOTAL_FACTS
+      };
+    }
+
+    function getLevelsPassed(progress) {
+      return getMasteryBreakdown(progress).fluent;
+    }
+
+    function calculateOverallMasteryScore(fluentCount, inProgressCount, accuracy, fpm) {
+      var weightedProgress = Number(fluentCount || 0) + (Number(inProgressCount || 0) * MASTERY_IN_PROGRESS_WEIGHT);
+      var progressPct = clamp(weightedProgress / MASTERY_TOTAL_FACTS, 0, 1);
+      var accuracyScore = clamp(Number(accuracy || 0), 0, 1);
+      var speedScore = clamp(Number(fpm || 0) / Math.max(1, MASTERY_SPEED_TARGET_FPM), 0, 1);
+      var qualityPct = (accuracyScore * 0.65) + (speedScore * 0.35);
+      var progressComponent = MASTERY_PROGRESS_WEIGHT * progressPct;
+      var performanceBonus = MASTERY_PERFORMANCE_BONUS_WEIGHT * qualityPct * progressPct;
+
+      return Math.round(100 * clamp(progressComponent + performanceBonus, 0, 1));
+    }
+
+    function getStoredMasteryScore(item) {
+      if (!item) return 0;
+
+      if (item.scoreFormula === MASTERY_SCORE_FORMULA_VERSION && item.masteryScore != null) {
+        return clamp(Number(item.masteryScore) || 0, 0, 100);
+      }
+
+      // Re-score older history entries so the graph is not inflated by the old speed-heavy formula.
+      var accuracy = item.accuracy != null ? (Number(item.accuracy) || 0) / 100 : 0;
+      return calculateOverallMasteryScore(
+        item.levelsPassed || 0,
+        item.inProgressCount || 0,
+        accuracy,
+        item.fpm || 0
+      );
     }
 
     function recordSessionComplete(progress) {
+      if (!round || round.attempted <= 0) return false;
       progress.sessionsCompleted = (progress.sessionsCompleted || 0) + 1;
+      if (!progress.dailyQuizCounts) progress.dailyQuizCounts = {};
+      var todayKey = getLocalDateKey();
+      progress.dailyQuizCounts[todayKey] = (progress.dailyQuizCounts[todayKey] || 0) + 1;
       if (!progress.sessionHistory) progress.sessionHistory = [];
-      var levelsPassed = getLevelsPassed(progress);
+      var masteryBreakdown = getMasteryBreakdown(progress);
+      var levelsPassed = masteryBreakdown.fluent;
+      var inProgressCount = masteryBreakdown.inProgress;
       var accuracy = round ? (round.correct / Math.max(1, round.attempted)) : 0;
-      var fpm = round ? Math.round((round.correct / (round.durationSec / 60)) * 10) / 10 : 0;
-      var progressScore = levelsPassed / 121;
-      var speedScore = Math.min(1, fpm / 20);
-      var masteryScore = Math.round(100 * (0.40 * accuracy + 0.35 * speedScore + 0.25 * progressScore));
+      var fpm = round ? Math.round(getRoundFpm(round) * 10) / 10 : 0;
+      if (fpm > (progress.allTimeBestFpm || 0)) progress.allTimeBestFpm = fpm;
+      var masteryScore = calculateOverallMasteryScore(levelsPassed, inProgressCount, accuracy, fpm);
       progress.sessionHistory.push({
         session: progress.sessionsCompleted,
         levelsPassed: levelsPassed,
+        inProgressCount: inProgressCount,
+        totalFacts: MASTERY_TOTAL_FACTS,
         masteryScore: masteryScore,
+        scoreFormula: MASTERY_SCORE_FORMULA_VERSION,
         accuracy: Math.round(accuracy * 100),
         fpm: fpm,
         currentTable: progress.currentTable,
@@ -1576,48 +1774,57 @@
       });
       if (progress.sessionHistory.length > 200) progress.sessionHistory.shift();
       saveProgressToStorage(progress);
+      return true;
     }
 
     function renderProgressGraph() {
       if (!el.progressGraph) return;
       var progress = loadProgress();
       var history = progress.sessionHistory || [];
-      var sessions = progress.sessionsCompleted || 0;
 
-      // Build data points; fall back gracefully for old history entries without masteryScore
-      var points = []; // starts from first real session - no jarring 0 baseline
+      // Build all data points. Older history entries are re-scored with the newer grid-heavy formula.
+      var allPoints = [];
       history.forEach(function (item, i) {
-        var lp = clamp(item.levelsPassed || 0, 0, 121);
-        var ms = (item.masteryScore != null) ? item.masteryScore : Math.round(30 * lp / 121);
-        points.push({
+        var lp = clamp(item.levelsPassed || 0, 0, MASTERY_TOTAL_FACTS);
+        var ip = clamp(item.inProgressCount || 0, 0, MASTERY_TOTAL_FACTS);
+        var ms = getStoredMasteryScore(item);
+        allPoints.push({
           session: item.session || (i + 1),
+          resultNumber: i + 1,
           masteryScore: clamp(ms, 0, 100),
           currentTable: item.currentTable || STARTING_TABLE,
           date: item.at || null,
           accuracy: item.accuracy || null,
-          fpm: item.fpm || null
+          fpm: item.fpm || null,
+          levelsPassed: lp,
+          inProgressCount: ip
         });
       });
 
+      var visiblePoints = graphShowAllResults ? allPoints.slice() : allPoints.slice(-GRAPH_DEFAULT_VISIBLE_RESULTS);
+
       // Score card above the graph
       var latest = history.length ? history[history.length - 1] : null;
-      var currentMastered = getLevelsPassed(progress);
+      var currentBreakdown = getMasteryBreakdown(progress);
+      var currentMastered = currentBreakdown.fluent;
+      var currentInProgress = currentBreakdown.inProgress;
       var scoreCardHtml = '';
       if (latest) {
-        var displayScore = (latest.masteryScore != null) ? latest.masteryScore : Math.round(30 * (latest.levelsPassed || 0) / 121);
+        var displayScore = getStoredMasteryScore(latest);
         var displayAcc = (latest.accuracy != null) ? latest.accuracy + '%' : '--';
         var displayFpm = (latest.fpm != null) ? latest.fpm + ' facts/min' : '--';
         scoreCardHtml =
           '<div class="mastery-scorecard">' +
-            '<span class="mastery-score-label">Times Table Mastery Score</span>' +
+            '<div class="mastery-score-head"><span class="mastery-score-label">Times Table Mastery Score</span><button type="button" class="mastery-info-btn" id="masteryInfoBtn" title="How scores are calculated" aria-label="How scores are calculated">i</button></div>' +
             '<span class="mastery-big-num">' + displayScore + '</span>' +
             '<div class="mastery-stats">' +
-              'Accuracy ' + displayAcc + ' · ' + displayFpm + ' · ' + currentMastered + '/121 mastered' +
+              currentMastered + '/' + MASTERY_TOTAL_FACTS + ' mastered &middot; ' + currentInProgress + ' in progress &middot; Accuracy ' + displayAcc + ' &middot; ' + displayFpm +
             '</div>' +
           '</div>';
       } else {
         scoreCardHtml =
           '<div class="mastery-scorecard">' +
+            '<div class="mastery-score-head"><span class="mastery-score-label">Times Table Mastery Score</span><button type="button" class="mastery-info-btn" id="masteryInfoBtn" title="How scores are calculated" aria-label="How scores are calculated">i</button></div>' +
             '<div class="mastery-empty-note">Finish a session to see your mastery score</div>' +
           '</div>';
       }
@@ -1632,57 +1839,143 @@
       var plotW = width - left - right;
       var plotH = height - top - bottom;
 
-      // X-axis: scale up from at least 5 sessions, snapped to a clean step
-      var rawXMax = Math.max(5, sessions);
-      var xStep = rawXMax <= 10 ? 1 : rawXMax <= 20 ? 2 : rawXMax <= 50 ? 5 : rawXMax <= 100 ? 10 : 20;
-      var xMax = Math.ceil(rawXMax / xStep) * xStep;
+      function formatShortDate(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return months[d.getMonth()] + ' ' + d.getDate();
+      }
 
-      // Y-axis: always 0-100, ticks at clean 25-point intervals
-      // --- Dynamic y-axis ---
-      var scores = points.map(function(p) { return p.masteryScore; });
-      var minScore = scores.length ? Math.min.apply(null, scores) : 0;
-      var yMin = Math.max(0, Math.floor((minScore - 10) / 10) * 10);
-      if ((100 - yMin) < 20) { yMin = Math.max(0, 80); }
-      var yRange = 100 - yMin;
-      var yStep = yRange <= 20 ? 5 : yRange <= 40 ? 10 : 25;
-      var yTicks = [];
-      for (var yt = yMin; yt <= 100; yt += yStep) { yTicks.push(yt); }
-      if (yTicks[yTicks.length - 1] !== 100) { yTicks.push(100); }
+      function getDateKey(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+      }
 
-      // X-axis: start from 1 (first real session), use dates where available
-      var xMin = 1;
-      var xTicks = [];
-      for (var xt = xStep; xt <= xMax; xt += xStep) { xTicks.push(xt); }
-      if (!xTicks.length || xTicks[0] !== xMin) { xTicks.unshift(xMin); }
+      function niceStep(range, targetTicks) {
+        if (!isFinite(range) || range <= 0) return 1;
+        var raw = range / Math.max(1, targetTicks);
+        var power = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+        var fraction = raw / power;
+        var niceFraction = 1;
+        if (fraction <= 1) niceFraction = 1;
+        else if (fraction <= 2) niceFraction = 2;
+        else if (fraction <= 5) niceFraction = 5;
+        else niceFraction = 10;
+        return niceFraction * power;
+      }
 
-      // Build a map: session number -> short date label
-      var sessionDateMap = {};
-      points.forEach(function(p) {
-        if (p.date) {
-          var d = new Date(p.date);
-          var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          sessionDateMap[p.session] = months[d.getMonth()] + ' ' + d.getDate();
+      function buildYAxis(pointsForAxis) {
+        if (!pointsForAxis.length) {
+          return { min: 0, max: 100, ticks: [0, 25, 50, 75, 100] };
         }
+
+        var scores = pointsForAxis.map(function (p) { return p.masteryScore; });
+        var minScore = Math.min.apply(null, scores);
+        var maxScore = Math.max.apply(null, scores);
+
+        if (maxScore <= 10) {
+          return { min: 0, max: 10, ticks: [0, 2, 4, 6, 8, 10] };
+        }
+
+        var rawRange = Math.max(10, maxScore - minScore);
+        var midpoint = (minScore + maxScore) / 2;
+        var paddedMin = midpoint - (rawRange * 0.65);
+        var paddedMax = midpoint + (rawRange * 0.65);
+        paddedMin = Math.max(0, paddedMin);
+        paddedMax = Math.min(100, paddedMax);
+
+        if (paddedMax - paddedMin < 10) {
+          if (paddedMin <= 0) paddedMax = Math.min(100, paddedMin + 10);
+          else if (paddedMax >= 100) paddedMin = Math.max(0, paddedMax - 10);
+          else {
+            paddedMin = Math.max(0, midpoint - 5);
+            paddedMax = Math.min(100, midpoint + 5);
+          }
+        }
+
+        var step = niceStep(paddedMax - paddedMin, 6);
+        var yMin = Math.max(0, Math.floor(paddedMin / step) * step);
+        var yMax = Math.min(100, Math.ceil(paddedMax / step) * step);
+
+        if (yMax - yMin < 10) {
+          yMax = Math.min(100, yMin + 10);
+          if (yMax - yMin < 10) yMin = Math.max(0, yMax - 10);
+        }
+
+        var ticks = [];
+        var tick = yMin;
+        var guard = 0;
+        while (tick <= yMax + 0.0001 && guard < 20) {
+          ticks.push(Math.round(tick * 10) / 10);
+          tick += step;
+          guard++;
+        }
+        if (ticks[ticks.length - 1] !== yMax) ticks.push(yMax);
+
+        return { min: yMin, max: yMax, ticks: ticks };
+      }
+
+      function getLabelIndexes(count, maxLabels) {
+        var indexes = [];
+        if (count <= 0) return indexes;
+        if (count <= maxLabels) {
+          for (var i = 0; i < count; i++) indexes.push(i);
+          return indexes;
+        }
+        for (var j = 0; j < maxLabels; j++) {
+          var idx = Math.round(j * (count - 1) / (maxLabels - 1));
+          if (indexes.indexOf(idx) === -1) indexes.push(idx);
+        }
+        return indexes;
+      }
+
+      var axis = buildYAxis(visiblePoints);
+      var yMin = axis.min;
+      var yMax = axis.max;
+      var yTicks = axis.ticks;
+      var maxLabels = Math.max(2, Math.min(5, Math.floor(plotW / 52)));
+      var labelIndexes = getLabelIndexes(visiblePoints.length, maxLabels);
+
+      var firstDateKey = visiblePoints.length ? getDateKey(visiblePoints[0].date) : '';
+      var allSameDate = !!firstDateKey;
+      visiblePoints.forEach(function (p) {
+        if (getDateKey(p.date) !== firstDateKey) allSameDate = false;
       });
 
-      // Max labels that fit without crowding (one every ~40px)
-      var maxLabels = Math.floor(plotW / 40);
-      var labelStep = (graphShowAllLabels || xTicks.length <= maxLabels) ? 1 : Math.ceil(xTicks.length / maxLabels);
+      function xPosByIndex(idx) {
+        if (visiblePoints.length <= 1) return left + (plotW / 2);
+        return left + (idx / (visiblePoints.length - 1)) * plotW;
+      }
 
-      function xPos(n) { return left + ((n - xMin) / Math.max(1, xMax - xMin)) * plotW; }
-      function yPos(n) { return top + plotH - ((n - yMin) / (100 - yMin)) * plotH; }
+      function yPos(n) {
+        return top + plotH - ((n - yMin) / Math.max(1, yMax - yMin)) * plotH;
+      }
+
+      function axisLabelForPoint(pt) {
+        if (!pt) return '';
+        if (allSameDate) return 'S' + pt.session;
+        return formatShortDate(pt.date) || ('S' + pt.session);
+      }
+
+      function tooltipLabelForPoint(pt) {
+        var d = formatShortDate(pt.date);
+        return 'Session ' + pt.session + (d ? ' - ' + d : '');
+      }
 
       // Line path
       var path = '';
-      points.forEach(function (pt, idx) {
-        path += (idx === 0 ? 'M' : 'L') + xPos(pt.session).toFixed(1) + ' ' + yPos(pt.masteryScore).toFixed(1) + ' ';
+      visiblePoints.forEach(function (pt, idx) {
+        path += (idx === 0 ? 'M' : 'L') + xPosByIndex(idx).toFixed(1) + ' ' + yPos(pt.masteryScore).toFixed(1) + ' ';
       });
 
-      // Milestone markers: vertical dashed lines when currentTable advances
+      // Milestone markers: vertical dashed lines when currentTable advances within the visible range
       var milestones = [];
-      for (var mi = 1; mi < points.length; mi++) {
-        if (points[mi].currentTable !== points[mi - 1].currentTable) {
-          milestones.push({ x: points[mi].session, table: points[mi].currentTable });
+      for (var mi = 1; mi < visiblePoints.length; mi++) {
+        if (visiblePoints[mi].currentTable !== visiblePoints[mi - 1].currentTable) {
+          milestones.push({ index: mi, table: visiblePoints[mi].currentTable });
         }
       }
 
@@ -1696,44 +1989,37 @@
         svg += '<text class="graph-label" x="' + (left - 5) + '" y="' + (Number(y) + 3.5) + '" text-anchor="end">' + tick + '</text>';
       });
 
-      // X grid lines and labels (show every other tick when there are many)
-      xTicks.forEach(function (tick, tickIdx) {
-        var x = xPos(tick).toFixed(1);
+      // X grid lines and adaptive labels
+      labelIndexes.forEach(function (pointIdx) {
+        var pt = visiblePoints[pointIdx];
+        var x = xPosByIndex(pointIdx).toFixed(1);
+        var label = axisLabelForPoint(pt);
         svg += '<line class="graph-grid-line" x1="' + x + '" y1="' + top + '" x2="' + x + '" y2="' + (height - bottom) + '"></line>';
-        if (tickIdx % labelStep === 0) {
-          var label = sessionDateMap[tick] || ('S' + tick);
-          if (graphShowAllLabels && labelStep === 1 && xTicks.length > maxLabels) {
-            svg += '<text class="graph-label" x="' + x + '" y="' + (height - bottom + 4) + '"'
-              + ' transform="rotate(45,' + x + ',' + (height - bottom + 4) + ')"'
-              + ' text-anchor="start" font-size="8">' + label + '</text>';
-          } else {
-            svg += '<text class="graph-label" x="' + x + '" y="' + (height - bottom + 12) + '" text-anchor="middle">' + label + '</text>';
-          }
-        }
+        svg += '<text class="graph-label" x="' + x + '" y="' + (height - bottom + 12) + '" text-anchor="middle">' + label + '</text>';
       });
 
       // Milestone vertical lines with table label at top-inside the plot
       milestones.forEach(function (m) {
-        var x = xPos(m.x).toFixed(1);
+        var x = xPosByIndex(m.index).toFixed(1);
         svg += '<line stroke="var(--color-gold)" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"'
           + ' x1="' + x + '" y1="' + top + '" x2="' + x + '" y2="' + (height - bottom) + '"></line>';
         svg += '<text font-size="8" font-weight="700" text-anchor="middle"'
-          + ' x="' + x + '" y="' + (top + 9) + '" style="fill:var(--color-gold);">×' + m.table + '</text>';
+          + ' x="' + x + '" y="' + (top + 9) + '" style="fill:var(--color-gold);">x' + m.table + '</text>';
       });
 
       // Axis lines
       svg += '<line class="graph-axis" x1="' + left + '" y1="' + top + '" x2="' + left + '" y2="' + (height - bottom) + '"></line>';
       svg += '<line class="graph-axis" x1="' + left + '" y1="' + (height - bottom) + '" x2="' + (width - right) + '" y2="' + (height - bottom) + '"></line>';
 
-      // Data line and dots - always draw dots; only draw line when 2+ points
-      if (points.length >= 1) {
-        if (points.length > 1) {
+      // Data line and dots - always draw dots; only draw line when 2+ visible points
+      if (visiblePoints.length >= 1) {
+        if (visiblePoints.length > 1) {
           svg += '<path class="graph-line" d="' + path + '"></path>';
         }
-        points.forEach(function (pt) {
-          var cx = xPos(pt.session).toFixed(1);
+        visiblePoints.forEach(function (pt, idx) {
+          var cx = xPosByIndex(idx).toFixed(1);
           var cy = yPos(pt.masteryScore).toFixed(1);
-          var dateLabel = sessionDateMap[pt.session] || ('Session ' + pt.session);
+          var dateLabel = tooltipLabelForPoint(pt);
           var accLabel = (pt.accuracy != null) ? pt.accuracy + '%' : '';
           var fpmLabel = (pt.fpm != null) ? pt.fpm + ' facts/min' : '';
           svg += '<circle class="graph-dot" cx="' + cx + '" cy="' + cy + '" r="3.5"></circle>';
@@ -1746,7 +2032,7 @@
       }
 
       // Axis labels
-      svg += '<text class="graph-label" x="' + (left + plotW / 2) + '" y="' + (height - 1) + '" text-anchor="middle">Date</text>';
+      svg += '<text class="graph-label" x="' + (left + plotW / 2) + '" y="' + (height - 1) + '" text-anchor="middle">Quiz result</text>';
       svg += '<text class="graph-label" transform="translate(8,' + (top + plotH / 2) + ') rotate(-90)" text-anchor="middle">Score</text>';
 
       // Empty state message
@@ -1755,7 +2041,10 @@
       }
 
       svg += '</svg>';
-      el.progressGraph.innerHTML = scoreCardHtml + svg;
+      var chartNote = graphShowAllResults
+        ? 'All saved results - score is out of 100'
+        : 'Recent ' + GRAPH_DEFAULT_VISIBLE_RESULTS + ' quiz results - score is out of 100';
+      el.progressGraph.innerHTML = scoreCardHtml + svg + '<div class="mastery-chart-note">' + chartNote + '</div>';
     }
 
     // v28: makeTicks() removed (was unused dead code)
@@ -1828,39 +2117,21 @@
     }
 
     function renderAuthUI() {
-      var hasGoogle = !!state.googleUser;
-      var signedIn = !!(state.googleUser || state.demoMode);
-      if (state.googleUser) {
-        el.userPic.src = state.googleUser.picture || '';
-        el.userName.textContent = state.googleUser.name;
-        el.userEmail.textContent = state.googleUser.email;
-      } else if (state.demoMode) {
-        el.userPic.src = '';
-        el.userName.textContent = 'Demo Student';
-        el.userEmail.textContent = 'Progress saves only on this device';
-      }
-      if (el.userInfo) el.userInfo.classList.toggle('hidden', !hasGoogle);
-      if (el.topLogin) el.topLogin.classList.toggle('hidden', hasGoogle);
-      if (el.settingsMenuWrap) el.settingsMenuWrap.classList.toggle('hidden', !hasGoogle);
-      if (el.googleSignInBtn && el.googleSignInBtn.parentElement) el.googleSignInBtn.parentElement.classList.toggle('hidden', hasGoogle);
-      if (el.demoNote) el.demoNote.classList.add('hidden');
-      el.practiceLayout.classList.toggle('hidden', !signedIn);
-      el.signInPanel.classList.add('hidden');
-      el.startBtn.disabled = !signedIn;
-      if (signedIn) {
-        var uiProgress = loadProgress();
-        setStatus(el.roundStatus, 'Ready. Press Start when you\'re ready.', '');
-        updatePracticeHeader();
-        renderProgressGrid();
-        renderProgressGraph();
-        updateStreakMeter(round ? round.streak : 0);
-        if (el.personalBestValue) {
-          var authPb = uiProgress.allTimeBestStreak || 0;
-          el.personalBestValue.textContent = authPb > 0 ? String(authPb) : '-';
-        }
-        if (el.quizCountValue) {
-          el.quizCountValue.textContent = String(uiProgress.sessionsCompleted || 0);
-        }
+      el.practiceLayout.classList.remove('hidden');
+      el.startBtn.disabled = false;
+      var uiProgress = loadProgress();
+      setStatus(el.roundStatus, 'Ready. Press Start when you\'re ready.', '');
+      updatePracticeHeader();
+      renderProgressGrid();
+      renderProgressGraph();
+      updateStreakMeter(round ? round.streak : 0);
+      updateSpeedUi(round ? getLiveFpm() : 0);
+      updateTodaysQuizDisplay(uiProgress);
+      updateBestSpeedDisplay(uiProgress);
+      if (el.currentStreakValue) el.currentStreakValue.textContent = String(round ? round.streak : 0);
+      if (el.personalBestValue) {
+        var pb = uiProgress.allTimeBestStreak || 0;
+        el.personalBestValue.textContent = pb > 0 ? String(pb) : '-';
       }
     }
 
@@ -1872,24 +2143,52 @@
     // ═══════════════════════════ HELPERS ═══════════════════════════
     function resetProgress() {
       var uid = getUserId();
-      if (!uid || !state.googleUser) return;
+      if (!uid) return;
       localStorage.removeItem(STORAGE_KEY + uid);
-      if (el.quizCountValue) el.quizCountValue.textContent = '0';
+      updateTodaysQuizDisplay(defaultProgress());
       stopRound(false);
       renderAuthUI();
       setStatus(el.roundStatus, 'Progress reset. Ready to start fresh.', 'warn');
     }
 
+    function getRoundFpm(r) {
+      if (!r) return 0;
+      var elapsedMs = r.startedAt ? Math.max(1000, Date.now() - r.startedAt) : (r.durationSec * 1000);
+      var elapsedMin = elapsedMs / 60000;
+      return r.correct / elapsedMin;
+    }
+
+    function getLiveFpm() {
+      return getRoundFpm(round);
+    }
+
+    function updateSpeedUi(fpm) {
+      if (!isFinite(fpm)) fpm = 0;
+      fpm = Math.max(0, fpm);
+      if (el.speedValue) el.speedValue.textContent = fpm.toFixed(1) + '/min';
+      if (el.speedBarValue) el.speedBarValue.textContent = fpm.toFixed(1);
+      updateFpmMeter(fpm);
+    }
+
+    function focusIfDesktop(node) {
+      if (!node) return;
+      var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+      if (!isTouch) node.focus();
+    }
+
     function updateStreakMeter(streak) {
       if (!el.streakFill || !el.streakFlame) return;
-      var value = clamp(streak || 0, 0, 20);
+      var rawStreak = streak || 0;
+      if (el.currentStreakValue) el.currentStreakValue.textContent = String(rawStreak);
+      var value = clamp(rawStreak, 0, 20);
       el.streakFill.style.width = String((value / 20) * 100) + '%';
       el.streakFlame.classList.toggle('hot', value >= 20);
     }
 
     function updateFpmMeter(fpm) {
       if (!el.fpmFill || !el.fpmRunner) return;
-      var pct = Math.max(0, Math.min(100, (fpm / 60) * 100));
+      var target = Math.max(1, Number(SPEED_FULL_BAR_FPM) || 30);
+      var pct = Math.max(0, Math.min(100, (fpm / target) * 100));
       el.fpmFill.style.width = pct.toFixed(1) + '%';
       el.fpmRunner.classList.toggle('fast', pct >= 100);
     }
@@ -1933,17 +2232,151 @@
     function hideGraduateBanner() { el.graduateBanner.classList.remove('active'); }
     function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
+    // ═══════════════════════════ MOBILE HELPERS ═══════════════════════════
+    function isProbablyMobile() {
+      if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
+      return 'ontouchstart' in window;
+    }
+
+    function getHapticsEnabled() {
+      var saved = null;
+      try { saved = localStorage.getItem(HAPTICS_KEY); } catch (e) {}
+      if (saved === 'true') return true;
+      if (saved === 'false') return false;
+      return HAPTICS_DEFAULT_ON;
+    }
+
+    function updateHapticsMenuText() {
+      if (!el.hapticsToggleBtn) return;
+      var enabled = getHapticsEnabled();
+      if (el.hapticsStatusText) el.hapticsStatusText.textContent = enabled ? 'On' : 'Off';
+      el.hapticsToggleBtn.classList.toggle('active', enabled);
+      el.hapticsToggleBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    }
+
+    function setHapticsEnabled(value) {
+      try { localStorage.setItem(HAPTICS_KEY, value ? 'true' : 'false'); } catch (e) {}
+      updateHapticsMenuText();
+    }
+
+    function buzz(pattern) {
+      if (!isProbablyMobile()) return;
+      if (!getHapticsEnabled()) return;
+      if (!navigator.vibrate) return;
+      navigator.vibrate(pattern);
+    }
+
+    function updateMobileMode() {
+      document.body.classList.toggle('mobile-play-mode', isProbablyMobile() || window.innerWidth <= 500);
+    }
+
     // ═══════════════════════════ THEME ═══════════════════════════
-    function initTheme() { document.documentElement.setAttribute('data-theme', lastTheme); }
-    function toggleTheme() {
-      lastTheme = lastTheme === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', lastTheme);
-      try { localStorage.setItem('factflow-theme', lastTheme); } catch(e) {}
+    function getSystemTheme() {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+      return 'light';
+    }
+
+    function getThemePref() {
+      var pref = 'system';
+      try {
+        pref = localStorage.getItem(THEME_PREF_KEY) || localStorage.getItem('factflow-theme') || 'system';
+      } catch (e) {}
+      if (pref !== 'light' && pref !== 'dark' && pref !== 'system') pref = 'system';
+      return pref;
+    }
+
+    function applyThemeFromPref() {
+      var pref = getThemePref();
+      var activeTheme = pref === 'system' ? getSystemTheme() : pref;
+      document.documentElement.setAttribute('data-theme', activeTheme);
+      if (el.themeLightBtn) {
+        el.themeLightBtn.classList.toggle('active', pref === 'light');
+        el.themeLightBtn.setAttribute('aria-pressed', pref === 'light' ? 'true' : 'false');
+      }
+      if (el.themeDarkBtn) {
+        el.themeDarkBtn.classList.toggle('active', pref === 'dark');
+        el.themeDarkBtn.setAttribute('aria-pressed', pref === 'dark' ? 'true' : 'false');
+      }
+      if (el.themeSystemBtn) {
+        el.themeSystemBtn.classList.toggle('active', pref === 'system');
+        el.themeSystemBtn.setAttribute('aria-pressed', pref === 'system' ? 'true' : 'false');
+      }
+    }
+
+    function setThemePref(pref) {
+      if (pref !== 'light' && pref !== 'dark' && pref !== 'system') return;
+      try {
+        localStorage.setItem(THEME_PREF_KEY, pref);
+        localStorage.removeItem('factflow-theme');
+      } catch (e) {}
+      applyThemeFromPref();
+    }
+
+    function setupSystemThemeListener() {
+      if (!window.matchMedia) return;
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+      function handleSystemThemeChange() {
+        if (getThemePref() === 'system') applyThemeFromPref();
+      }
+      if (mq.addEventListener) mq.addEventListener('change', handleSystemThemeChange);
+      else if (mq.addListener) mq.addListener(handleSystemThemeChange);
+    }
+
+    function initTheme() {
+      applyThemeFromPref();
+      setupSystemThemeListener();
+    }
+
+    function closeSettingsMenu() {
+      if (el.settingsDropdown) el.settingsDropdown.classList.remove('open');
+      var normal = document.getElementById('resetNormal');
+      var confirm = document.getElementById('resetConfirm');
+      if (normal) normal.style.display = '';
+      if (confirm) confirm.style.display = 'none';
+    }
+
+
+    // ═══════════════════════════ SCORE INFO PANEL ═══════════════════════════
+    function openScoreInfo() {
+      if (!el.scoreInfoOverlay) return;
+      el.scoreInfoOverlay.classList.remove('hidden');
+      if (el.scoreInfoCloseBtn) el.scoreInfoCloseBtn.focus();
+    }
+
+    function closeScoreInfo() {
+      if (el.scoreInfoOverlay) el.scoreInfoOverlay.classList.add('hidden');
     }
 
     // ═══════════════════════════ EVENTS ═══════════════════════════
     function bindEvents() {
-      el.themeToggle.addEventListener('click', toggleTheme);
+      if (el.themeLightBtn) {
+        el.themeLightBtn.addEventListener('click', function () { setThemePref('light'); closeSettingsMenu(); });
+      }
+      if (el.themeDarkBtn) {
+        el.themeDarkBtn.addEventListener('click', function () { setThemePref('dark'); closeSettingsMenu(); });
+      }
+      if (el.themeSystemBtn) {
+        el.themeSystemBtn.addEventListener('click', function () { setThemePref('system'); closeSettingsMenu(); });
+      }
+      if (el.hapticsToggleBtn) {
+        el.hapticsToggleBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          setHapticsEnabled(!getHapticsEnabled());
+        });
+      }
+      document.addEventListener('click', function (e) {
+        if (e.target && e.target.id === 'masteryInfoBtn') {
+          e.preventDefault();
+          openScoreInfo();
+        }
+      });
+      if (el.scoreInfoCloseBtn) el.scoreInfoCloseBtn.addEventListener('click', closeScoreInfo);
+      if (el.scoreInfoDoneBtn) el.scoreInfoDoneBtn.addEventListener('click', closeScoreInfo);
+      if (el.scoreInfoOverlay) {
+        el.scoreInfoOverlay.addEventListener('click', function (e) {
+          if (e.target === el.scoreInfoOverlay) closeScoreInfo();
+        });
+      }
 
       // ── Settings menu ──
       if (el.settingsBtn) {
@@ -1951,6 +2384,7 @@
           e.stopPropagation();
           var open = el.settingsDropdown.classList.toggle('open');
           if (open) {
+            updateHapticsMenuText();
             document.getElementById('resetNormal').style.display = '';
             document.getElementById('resetConfirm').style.display = 'none';
           }
@@ -1959,9 +2393,7 @@
       document.addEventListener('click', function (e) {
         if (el.settingsDropdown && el.settingsDropdown.classList.contains('open')) {
           if (!el.settingsMenuWrap || !el.settingsMenuWrap.contains(e.target)) {
-            el.settingsDropdown.classList.remove('open');
-            document.getElementById('resetNormal').style.display = '';
-            document.getElementById('resetConfirm').style.display = 'none';
+            closeSettingsMenu();
           }
         }
       });
@@ -1974,9 +2406,7 @@
       }
       if (el.settingsConfirmResetBtn) {
         el.settingsConfirmResetBtn.addEventListener('click', function () {
-          el.settingsDropdown.classList.remove('open');
-          document.getElementById('resetNormal').style.display = '';
-          document.getElementById('resetConfirm').style.display = 'none';
+          closeSettingsMenu();
           resetProgress();
         });
       }
@@ -1987,31 +2417,6 @@
           document.getElementById('resetConfirm').style.display = 'none';
         });
       }
-      // v28: mobile-friendly sync debug toggle (settings menu + double-tap logo)
-      var debugBtn = document.getElementById('settingsDebugBtn');
-      if (debugBtn) {
-        debugBtn.addEventListener('click', function() {
-          toggleSyncDebug();
-          debugBtn.textContent = syncDebug ? 'Sync Debug: on' : 'Sync Debug: off';
-          if (el.settingsDropdown) el.settingsDropdown.classList.remove('open');
-        });
-      }
-      // Double-tap the logo to toggle debug
-      var logoEl = document.querySelector('.logo');
-      if (logoEl) {
-        var logoDtapTimer = null;
-        logoEl.addEventListener('click', function() {
-          if (logoDtapTimer) { clearTimeout(logoDtapTimer); logoDtapTimer = null; toggleSyncDebug(); return; }
-          logoDtapTimer = setTimeout(function() { logoDtapTimer = null; }, 300);
-        });
-      }
-      if (el.useDemoBtn) el.useDemoBtn.addEventListener('click', function () { state.demoMode = true; state.googleUser = null; renderAuthUI(); });
-      if (el.syncStatus) {
-        el.syncStatus.addEventListener('click', function () {
-          if (state.googleUser && !driveAccessToken) reconnectDriveFromUserAction();
-        });
-      }
-      el.signOutBtn.addEventListener('click', signOut);
       el.startBtn.addEventListener('click', startRound);
       el.answerInput.addEventListener('input', handleAnswerInput);
       el.timeoutInput.addEventListener('input', handleTimeoutInput);
@@ -2019,14 +2424,16 @@
         btn.addEventListener('click', function () { handleKeypad(btn.dataset.key); });
       });
       document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && el.scoreInfoOverlay && !el.scoreInfoOverlay.classList.contains('hidden')) {
+          closeScoreInfo();
+          return;
+        }
         if (e.key >= '0' && e.key <= '9') {
-          if (document.activeElement === el.answerInput || document.activeElement === el.timeoutInput) return;
+          if (document.activeElement === el.answerInput || document.activeElement === el.timeoutInput) e.preventDefault();
           handleKeypad(e.key);
         } else if (e.key === 'Backspace') {
-          if (document.activeElement === el.answerInput || document.activeElement === el.timeoutInput) return;
+          if (document.activeElement === el.answerInput || document.activeElement === el.timeoutInput) e.preventDefault();
           handleKeypad('backspace');
-        } else if (e.key === 'D' && e.ctrlKey && e.shiftKey) {
-          toggleSyncDebug();
         } else if (e.key === 'Enter') {
           if (document.activeElement === el.answerInput) handleAnswerInput();
           else if (document.activeElement === el.timeoutInput) handleTimeoutInput();
@@ -2035,1007 +2442,98 @@
       });
     }
 
-    // ═══════════════════════════ INIT ═══════════════════════════
-    
-    // ═══════════════════════════════════════════════════════════
-    //  GOOGLE DRIVE SYNC
-    //  Saves progress as factflow-progress.json in Drive appDataFolder.
-    //  Uses google.accounts.oauth2 (same GSI script, no extra CDN needed).
-    // ═══════════════════════════════════════════════════════════
-
-    function showSyncStatus(msg, isError) {
-      var s = el.syncStatus;
-      if (!s) return;
-      s.style.display = 'inline-flex';
-      s.style.color = isError ? 'rgba(255,160,160,0.95)' : 'rgba(255,255,255,0.88)';
-      s.style.cursor = (state.googleUser && !driveAccessToken) ? 'pointer' : '';
-      s.title = (state.googleUser && !driveAccessToken) ? 'Tap to reconnect Google Drive' : '';
-      s.innerHTML = msg;
-    }
-    function hideSyncStatus() {
-      if (el.syncStatus) el.syncStatus.style.display = 'none';
-    }
-
-    // PHASE 3.3: Token expiry warning — check every 60s, warn 5 min before expiry
-    var tokenExpiryCheckTimer = null;
-    function startTokenExpiryCheck() {
-      if (tokenExpiryCheckTimer) return;
-      tokenExpiryCheckTimer = setInterval(function () {
-        if (!state.googleUser || !driveAccessToken) return;
-        var expiry = Number(localStorage.getItem(DRIVE_TOKEN_EXPIRY_KEY) || 0);
-        var remaining = expiry - Date.now();
-        // Warn if < 5 min remaining — Bug L1 fix: clear the warning after a delay so it
-        // doesn't permanently replace the sync status icon.
-        if (expiry > 0 && remaining > 0 && remaining <= TOKEN_EXPIRY_WARN_MS) {
-          showSyncStatus('&#9888; Drive session expiring soon', true);
-          // Show for 8s then revert to clear (will be shown again next interval if still valid)
-          setTimeout(function () {
-            var cur = el.syncStatus;
-            if (cur && cur.innerHTML.indexOf('expiring soon') !== -1) hideSyncStatus();
-          }, 8000);
-        }
-        // Force refresh if < 1 min remaining.
-        // Don't clear the stored token — leave it in localStorage so
-        // loadDriveTokenFromStorage can serve it during the GSI load race.
-        // The stored token will be overwritten when the new one arrives.
-        if (expiry > 0 && remaining > 0 && remaining <= 60000) {
-          driveAccessToken = null;  // triggers refresh path without clearing storage
-          getOrRefreshDriveToken('sync', syncProgressToDrive, false);
-        }
-      }, 60000);
-    }
-
-    // v28: refreshFromDrive() removed (was unused dead code)
-    function saveDriveTokenToStorage(token) {
-      try {
-        var expiresAt = Date.now() + 55 * 60 * 1000; // conservative 55-min TTL
-        localStorage.setItem(DRIVE_TOKEN_CACHE_KEY, token);
-        localStorage.setItem(DRIVE_TOKEN_EXPIRY_KEY, String(expiresAt));
-      } catch (e) {}
-    }
-
-    function loadDriveTokenFromStorage() {
-      try {
-        var token   = localStorage.getItem(DRIVE_TOKEN_CACHE_KEY);
-        var expiry  = Number(localStorage.getItem(DRIVE_TOKEN_EXPIRY_KEY) || 0);
-        if (token && expiry > Date.now()) return token;
-      } catch (e) {}
-      return null;
-    }
-
-    function clearDriveTokenStorage() {
-      try {
-        localStorage.removeItem(DRIVE_TOKEN_CACHE_KEY);
-        localStorage.removeItem(DRIVE_TOKEN_EXPIRY_KEY);
-      } catch (e) {}
-    }
-
-    function showDriveReconnectNeeded(action) {
-      addSyncLog('token_needed', (action || 'sync') + ': waiting for user reconnect');
-      showSyncStatus('&#9888; Drive reconnect needed - tap here', true);
-    }
-
-    function reconnectDriveFromUserAction() {
-      if (!state.googleUser) return;
-      getOrRefreshDriveToken('reconnect', function () {
-        loadProgressFromDrive();
-        if (localProgressDirty) syncProgressToDrive();
-      }, true);
-    }
-
-    function initDriveTokenClient() {
-      if (!window.google || !google.accounts || !google.accounts.oauth2) return false;
-      if (GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID') === 0) return false;
-
-      driveTokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: 'https://www.googleapis.com/auth/drive.appdata',
-        callback: function (tokenResponse) {
-          driveTokenRequestInFlight = false;
-          if (tokenResponse && tokenResponse.error) {
-            driveAccessToken = null;
-            clearDriveTokenStorage();
-            if (driveTokenClient) driveTokenClient._pendingCallbacks = [];
-            addSyncLog('token_error', tokenResponse.error);
-            showDriveReconnectNeeded('token_error');
-            return;
-          }
-          if (tokenResponse && tokenResponse.access_token) {
-            driveAccessToken = tokenResponse.access_token;
-            saveDriveTokenToStorage(driveAccessToken);
-            addSyncLog('token_received', 'Drive access token ready');
-            syncRetryEntry = null;
-            if (syncRetryTimer) { clearTimeout(syncRetryTimer); syncRetryTimer = null; }
-            try { localStorage.removeItem('factflow-sync-queue'); } catch (e) {}
-            startTokenExpiryCheck();
-            startPeriodicSync();
-            // Bug H3 fix: drain ALL pending callbacks instead of overwriting with a single one.
-            // GSI is shared across all auth flows; multiple callers may be queued simultaneously.
-            var pending = driveTokenClient._pendingCallbacks || [];
-            driveTokenClient._pendingCallbacks = [];
-            pending.forEach(function(cb) { try { cb(); } catch (e) {} });
-          } else {
-            if (driveTokenClient) driveTokenClient._pendingCallbacks = [];
-            addSyncLog('token_denied', 'No access token returned');
-            showDriveReconnectNeeded('token_denied');
-          }
-        }
-      });
-      return true;
-    }
-
-    function getOrRefreshDriveToken(action, callback, interactive) {
-      if (driveAccessToken) { callback(); return; }
-
-      var stored = loadDriveTokenFromStorage();
-      if (stored) {
-        driveAccessToken = stored;
-        callback();
-        return;
-      }
-
-      if (!driveTokenClient) initDriveTokenClient();
-      if (!driveTokenClient) {
-        // GSI may still be loading. Retry this silently, but do not open any account UI.
-        addSyncLog('token_client_missing', action + ': google.accounts.oauth2 not available');
-        showSyncStatus('&#9888; Drive not available - retrying...', true);
-        scheduleRetrySync('drive_not_available');
-        return;
-      }
-
-      // Do not allow background sync, visibilitychange, token-expiry checks, or retry timers
-      // to open Google's account picker. Only a real user action may request a new Drive token.
-      if (!interactive) {
-        showDriveReconnectNeeded(action);
-        return;
-      }
-
-      // Bug H3 fix: push to array so multiple concurrent callers all get fulfilled.
-      if (!driveTokenClient._pendingCallbacks) driveTokenClient._pendingCallbacks = [];
-      driveTokenClient._pendingCallbacks.push(callback);
-      if (driveTokenRequestInFlight) {
-        addSyncLog('token_join', action + ': joined existing token request');
-        return;
-      }
-      try {
-        driveTokenRequestInFlight = true;
-        driveTokenClient.requestAccessToken({ prompt: 'consent' });
-      } catch (e) {
-        driveTokenRequestInFlight = false;
-        driveTokenClient._pendingCallbacks = [];
-        addSyncLog('token_request_error', e && e.message ? e.message : String(e));
-        showDriveReconnectNeeded('token_request_error');
-      }
-    }
-
-    function driveMultipartBody(boundary, meta, content) {
-      return (
-        '--' + boundary + '\r\n' +
-        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-        JSON.stringify(meta) + '\r\n' +
-        '--' + boundary + '\r\n' +
-        'Content-Type: application/json\r\n\r\n' +
-        content + '\r\n' +
-        '--' + boundary + '--'
-      );
-    }
-
-    function syncProgressToDrive(force) {
-      if (!state.googleUser || !driveAccessToken) { addSyncLog('sync_skip', 'No user or token'); return; }
-      if (!force && !localProgressDirty) { addSyncLog('sync_skip', 'Not dirty'); return; }
-      if (syncPending) { addSyncLog('sync_skip', 'Already syncing'); return; }
-      syncPending = true;
-      addSyncLog('sync_start', 'force=' + (!!force) + ' dirty=' + localProgressDirty);
-      showSyncStatus('&#8635; Syncing...', false);
-
-      var uid = STORAGE_KEY + state.googleUser.sub;
-      // P1 fix: use snapshot from debounce time if available, fall back to localStorage
-      var progressJson = syncPendingSnapshot || localStorage.getItem(uid);
-      syncPendingSnapshot = null; // consume snapshot
-      if (!progressJson) { syncPending = false; hideSyncStatus(); return; }
-      var uploadedUpdatedAt = 0;
-      try {
-        var uploadProgress = JSON.parse(progressJson);
-        uploadedUpdatedAt = uploadProgress && uploadProgress.updatedAt ? Date.parse(uploadProgress.updatedAt) : 0;
-      } catch (e) {
-        uploadedUpdatedAt = 0;
-      }
-
-      var boundary = 'factflow_boundary_' + Date.now();
-      var body = driveMultipartBody(boundary, { name: 'factflow-progress.json', parents: ['appDataFolder'] }, progressJson);
-
-      function doUpload(fileId) {
-        var method = fileId ? 'PATCH' : 'POST';
-        var url = fileId
-          ? 'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=multipart'
-          : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-        // P6 fix: send If-Match so Drive rejects concurrent overwrites
-        var uploadHeaders = {
-          'Authorization': 'Bearer ' + driveAccessToken,
-          'Content-Type': 'multipart/related; boundary=' + boundary
-        };
-        if (driveFileEtag) uploadHeaders['If-Match'] = driveFileEtag;
-
-        fetch(url, {
-          method: method,
-          headers: uploadHeaders,
-          body: body,
-          keepalive: true
-        })
-        .then(function(r) {
-          if (!r.ok) {
-            return r.text().then(function(text) {
-              throw new Error('Drive upload failed: ' + r.status + ' ' + text);
-            });
-          }
-          // Capture ETag for conflict detection on next upload
-          var etag = r.headers.get('ETag') || r.headers.get('etag') || null;
-          return r.json().then(function(data) { return { data: data, etag: etag }; });
-        })
-        .then(function(result) {
-          var data = result.data;
-          syncPending = false;
-          if (data.id) {
-            driveFileId = data.id;
-            if (result.etag) driveFileEtag = result.etag;
-            var currentRaw = localStorage.getItem(uid);
-            var currentUpdatedAt = 0;
-            try {
-              var currentProgress = currentRaw ? JSON.parse(currentRaw) : null;
-              currentUpdatedAt = currentProgress && currentProgress.updatedAt ? Date.parse(currentProgress.updatedAt) : 0;
-            } catch (e) {
-              currentUpdatedAt = uploadedUpdatedAt;
-            }
-            if (currentUpdatedAt <= uploadedUpdatedAt) {
-              localProgressDirty = false;
-            } else {
-              localProgressDirty = true;
-              clearTimeout(syncDebounceTimer);
-              syncDebounceTimer = setTimeout(function () { triggerDriveSync(); }, 800);
-            }
-            syncRetryEntry = null;
-            try { localStorage.setItem('factflow-sync-queue', JSON.stringify([])); } catch (e) {}
-            showSyncStatus('&#10003; Synced', false);
-            addSyncLog('sync_ok', 'Uploaded, etag=' + (driveFileEtag ? driveFileEtag.slice(0,12) : 'none'));
-            setTimeout(hideSyncStatus, 2500);
-          } else {
-            showSyncStatus('&#9888; Sync failed', true);
-            console.log('FactFlow Drive upload response missing file id:', data);
-            setTimeout(hideSyncStatus, 3500);
-          }
-        })
-        .catch(function(e) {
-          syncPending = false;
-          var msg = e.message || '';
-          // Bug CORS fix: detect "Failed to fetch" style messages as transient errors
-          var isNetworkError = msg.indexOf('net::') === 0
-            || msg.indexOf('NetworkError') !== -1
-            || msg.indexOf('Failed to fetch') !== -1
-            || msg.indexOf('network') !== -1 && msg.length < 40;
-          if (isNetworkError) {
-            showSyncStatus('&#9888; Network error - retrying...', true);
-            addSyncLog('sync_retry_net', msg.slice(0,80));
-            scheduleRetrySync(msg);
-          } else if (msg.indexOf('401') !== -1 || msg.indexOf('403') !== -1) {
-            // P13 fix: clear stored token to break revoked-token loop
-            showSyncStatus('&#9888; Drive session expired', true);
-            driveAccessToken = null;
-            clearDriveTokenStorage();
-            setTimeout(hideSyncStatus, 3500);
-          } else if (msg.indexOf('412') !== -1) {
-            // v28 fix: 412 Precondition Failed = ETag mismatch.
-            // Pull from Drive FIRST, merge, then re-upload.
-            driveFileEtag = null;
-            showSyncStatus('&#9888; Conflict - resolving...', true);
-            addSyncLog('conflict_412', 'ETag mismatch - pulling from Drive');
-            if (!syncPending) {
-              getOrRefreshDriveToken('conflict', function() {
-                loadProgressFromDrive();
-              }, false);
-            }
-          } else if (msg.indexOf('404') !== -1) {
-            // Bug H6 fix: 404 means the file was deleted on Drive — clear cached
-            // fileId so the next sync re-lists and creates the file fresh.
-            driveFileId = null;
-            showSyncStatus('&#9888; File not found - recreating...', true);
-            addSyncLog('sync_404', 'File not found on Drive, will recreate');
-            scheduleRetrySync(msg);
-          } else {
-            showSyncStatus('&#9888; Sync error', true);
-            console.log('FactFlow Drive sync error:', e);
-            setTimeout(hideSyncStatus, 3500);
-          }
+    function bindGraphInteractions() {
+      var btn = document.getElementById('graphToggleBtn');
+      if (btn && !btn.dataset.bound) {
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', function () {
+          graphShowAllResults = !graphShowAllResults;
+          btn.textContent = graphShowAllResults ? 'Show recent results' : 'Show all results';
+          btn.style.opacity = graphShowAllResults ? '1' : '0.7';
+          btn.style.color = graphShowAllResults ? 'var(--color-primary)' : '';
+          btn.style.borderColor = graphShowAllResults ? 'var(--color-primary)' : '';
+          renderProgressGraph();
         });
       }
 
-      if (driveFileId) {
-        doUpload(driveFileId);
-      } else {
-        fetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'factflow-progress.json'&fields=files(id)", {
-          headers: { 'Authorization': 'Bearer ' + driveAccessToken }
-        })
-        .then(function(r) {
-          if (!r.ok) {
-            return r.text().then(function(text) {
-              throw new Error('Drive list before sync failed: ' + r.status + ' ' + text);
-            });
-          }
-          return r.json();
-        })
-        .then(function(data) {
-          driveFileId = (data.files && data.files.length > 0) ? data.files[0].id : null;
-          doUpload(driveFileId);
-        })
-        .catch(function(e) {
-          syncPending = false;
-          var msg = e.message || '';
-          if (msg.indexOf('net::') === 0 || msg.indexOf('NetworkError') !== -1) {
-            showSyncStatus('&#9888; Network error - retrying...', true);
-            scheduleRetrySync(msg);
-          } else {
-            showSyncStatus('&#9888; Sync lookup failed', true);
-            console.log('FactFlow Drive sync lookup error:', e);
-            setTimeout(hideSyncStatus, 3500);
-          }
-        });
-      }
-    }
+      var tooltip = document.getElementById('graphTooltip');
+      if (!tooltip || tooltip.dataset.bound) return;
+      tooltip.dataset.bound = '1';
 
-    // ═══════════════════════════ SMART MERGE ═══════════════════════════
-    function smartMergeProgress(driveProgress, localProgress) {
-      // Smart three-way merge: compare fact-by-fact, not just session counts
-      // PHASE 1: Critical fixes to prevent data loss
-      if (!localProgress) return driveProgress;
-      
-      var merged = JSON.parse(JSON.stringify(driveProgress)); // Clone drive data
-
-      // Bug C2 fix: if Drive returned a corrupt file (factStats missing or null),
-      // the clone has no factStats. Initialise it so the merge loop can still run.
-      merged.factStats = merged.factStats || {};
-
-      // PHASE 1.1 & 1.2: Merge factStats individually - two-pass to catch all facts
-      if (localProgress.factStats && merged.factStats) {
-        // First pass: merge facts that exist in BOTH local and drive
-        for (var key in localProgress.factStats) {
-          if (merged.factStats[key]) {
-            // Fact exists on both - merge intelligently
-            var driveStats = merged.factStats[key];
-            var localStats = localProgress.factStats[key];
-            
-            // FIX 1.1: SUM attempts instead of Math.max (was losing data!)
-            // Bug C4 fix: capture original drive attempts BEFORE modifying shown, so the
-            // weighted-average calculation below uses the correct pre-merge count.
-            var originalDriveShown = (driveStats.shown || 0);
-            driveStats.shown = (driveStats.shown || 0) + (localStats.shown || 0);
-            driveStats.correct = (driveStats.correct || 0) + (localStats.correct || 0);
-            driveStats.incorrect = (driveStats.incorrect || 0) + (localStats.incorrect || 0);
-            driveStats.timeouts = (driveStats.timeouts || 0) + (localStats.timeouts || 0);
-
-            // Recalculate average response time weighted by attempts (with NaN safety)
-            var localAttempts = (localStats.shown || 0);
-            if (localAttempts > 0) {
-              var driveAvg = parseFloat(driveStats.avgMs) || 0;
-              var localAvg = parseFloat(localStats.avgMs) || 0;
-              // Bug C4 fix: use the captured original count, not the already-incremented one
-              var driveAttempts = originalDriveShown || 0;
-              var totalAttempts = driveAttempts + localAttempts;
-              if (totalAttempts > 0 && !isNaN(driveAvg) && !isNaN(localAvg)) {
-                driveStats.avgMs = Math.round(
-                  ((driveAvg * driveAttempts) + (localAvg * localAttempts)) / totalAttempts
-                );
-              } else if (!isNaN(localAvg)) {
-                driveStats.avgMs = localAvg;
-              }
-            }
-            
-            // v28: merge derived performance state fields
-            driveStats.fastStreak = Math.max(driveStats.fastStreak || 0, localStats.fastStreak || 0);
-            driveStats.slowOrWrongCount = Math.max(driveStats.slowOrWrongCount || 0, localStats.slowOrWrongCount || 0);
-            driveStats.cooldownUntil = Math.max(driveStats.cooldownUntil || 0, localStats.cooldownUntil || 0);
-            if ((localStats.lastSeenTs || 0) >= (driveStats.lastSeenTs || 0) && localStats.lastResponseMs != null) {
-              driveStats.lastResponseMs = localStats.lastResponseMs;
-            } else if (driveStats.lastResponseMs == null && localStats.lastResponseMs != null) {
-              driveStats.lastResponseMs = localStats.lastResponseMs;
-            }
-
-            // Merge recent attempts - keep most recent 12
-            // P9 fix: interleave drive+local entries when timestamps are close (clock skew).
-            var driveRec = (driveStats.recent || []).slice();
-            var localRec = (localStats.recent || []).slice();
-            var clockSkewMs = 5000;
-            var mergedRec = [];
-            var dri = 0, lri = 0;
-            while (dri < driveRec.length && lri < localRec.length) {
-              var dT = driveRec[dri].at || 0;
-              var lT = localRec[lri].at || 0;
-              if (Math.abs(dT - lT) <= clockSkewMs) {
-                mergedRec.push(driveRec[dri++]);
-                mergedRec.push(localRec[lri++]);
-              } else if (dT > lT) {
-                mergedRec.push(driveRec[dri++]);
-              } else {
-                mergedRec.push(localRec[lri++]);
-              }
-            }
-            while (dri < driveRec.length) mergedRec.push(driveRec[dri++]);
-            while (lri < localRec.length) mergedRec.push(localRec[lri++]);
-            driveStats.recent = mergedRec.slice(0, 12);
-            
-            // Use the most recent timestamp
-            if ((localStats.lastSeenTs || 0) > (driveStats.lastSeenTs || 0)) {
-              driveStats.lastSeen = localStats.lastSeen;
-              driveStats.lastSeenTs = localStats.lastSeenTs;
-            }
-          } else {
-            // FIX 1.2: Fact only exists locally, keep it (new data from this device)
-            merged.factStats[key] = JSON.parse(JSON.stringify(localProgress.factStats[key]));
-          }
-        }
-        
-        // Second pass: keep all Drive facts that don't exist in local (data from other device)
-        // This was missing! If Drive has facts local hasn't synced yet, they're now preserved
-        for (var dkey in merged.factStats) {
-          if (!localProgress.factStats || !localProgress.factStats[dkey]) {
-            // Keep the Drive fact unchanged (it's from another device)
-          }
-        }
-      }
-      
-      // FIX 1.3 & 1.4: Merge session history properly
-      // P10 fix: use composite key so simultaneous quizzes on two devices aren't lost
-      merged.sessionHistory = merged.sessionHistory || [];
-      if (localProgress.sessionHistory) {
-        var sessionMap = {};
-        merged.sessionHistory.forEach(function(s) {
-          var key = 'sess_' + (s.session || 0);
-          if (!sessionMap[key]) sessionMap[key] = [];
-          sessionMap[key].push(s);
-        });
-        (localProgress.sessionHistory || []).forEach(function(s) {
-          var key = 'sess_' + (s.session || 0);
-          if (!sessionMap[key]) {
-            sessionMap[key] = [s];
-          } else {
-            var exists = sessionMap[key].some(function(existing) {
-              return existing.at === s.at && existing.fpm === s.fpm;
-            });
-            if (!exists) sessionMap[key].push(s);
-          }
-        });
-        // Flatten: keep the best entry per session number (highest masteryScore)
-        merged.sessionHistory = Object.keys(sessionMap).map(function(k) {
-          var entries = sessionMap[k];
-          if (entries.length === 1) return entries[0];
-          return entries.reduce(function(best, e) {
-            return (e.masteryScore || 0) > (best.masteryScore || 0) ? e : best;
-          });
-        }).sort(function(a, b) {
-          return (a.session || 0) - (b.session || 0);
-        });
-      }
-      
-      // P11 fix: sessionsCompleted = actual merged history length
-      // Avoid permanent mismatch when dedup removes sessions
-      merged.sessionsCompleted = Math.max(
-        merged.sessionHistory.length,
-        Math.max((merged.sessionsCompleted || 0), (localProgress.sessionsCompleted || 0))
-      );
-      // If history was deduped, ensure sessionsCompleted doesn't exceed it
-      if (merged.sessionsCompleted > merged.sessionHistory.length) {
-        // Reassign session numbers sequentially to close the gap
-        merged.sessionHistory.forEach(function(s, i) {
-          s.session = i + 1;
-        });
-        merged.sessionsCompleted = merged.sessionHistory.length;
-      }
-      
-      merged.allTimeBestStreak = Math.max(
-        (merged.allTimeBestStreak || 0),
-        (localProgress.allTimeBestStreak || 0)
-      );
-      
-      // P12 fix: table progression — take the higher table ONLY if the user
-      // has actually graduated (i.e., the lower table's facts are all mastered).
-      // Otherwise keep the lower table to avoid skipping ahead unprepared.
-      var driveTable = merged.currentTable || STARTING_TABLE;
-      var localTable = localProgress.currentTable || STARTING_TABLE;
-      if (driveTable !== localTable) {
-        var lowerTable = Math.min(driveTable, localTable);
-        var higherTable = Math.max(driveTable, localTable);
-        // Check if all facts in lowerTable are mastered (from the higher-table device's perspective)
-        var lowerTableReady = ALL_SECONDS.every(function(sec) {
-          var s = merged.factStats[lowerTable + 'x' + sec];
-          return s && s.shown >= 4 && s.mastery >= 0.80;
-        });
-        merged.currentTable = lowerTableReady ? higherTable : lowerTable;
-      } else {
-        merged.currentTable = driveTable;
-      }
-      
-      // Always use the most recent update timestamp
-      if ((localProgress.updatedAt || '0') > (merged.updatedAt || '0')) {
-        merged.updatedAt = localProgress.updatedAt;
-      }
-      
-      // FIX 1.5 (Bug C3 fix): CRITICAL - Recalculate mastery after merge.
-      // Bug C3: the original used a hardcoded 5000ms threshold which diverges from
-      // the live fluentMs-based formula in updateFactStats(), causing incorrect
-      // progress-grid colours after any Drive sync. Now matches the live formula.
-      if (merged.factStats) {
-        var a = state.settings.adaptive;
-        var fluent = a.fluentMs;
-        for (var mkey in merged.factStats) {
-          var s = merged.factStats[mkey];
-          if (s && s.correct !== undefined && s.shown !== undefined && s.shown > 0) {
-            var baseAcc = s.correct / s.shown;
-            var recentSlice = (s.recent || []).slice(-6);
-            var recentCorrect = recentSlice.filter(function(r) { return r.isCorrect && !r.timeout; }).length;
-            var recentCount = recentSlice.length;
-            var recentAcc = recentCount > 0 ? recentCorrect / recentCount : baseAcc;
-            var recentSpeed = recentCount > 0
-              ? recentSlice.reduce(function(sum, r) { return sum + r.responseMs; }, 0) / recentCount
-              : (s.avgMs || 0);
-            var speedScore = recentSpeed <= fluent * 0.78 ? 1
-              : recentSpeed >= fluent * 2.2 ? 0.15
-              : 1 - ((recentSpeed - fluent * 0.78) / (fluent * 1.42)) * 0.85;
-            var consistency = recentCount > 0
-              ? recentSlice.reduce(function(sum, r) { return sum + (r.isCorrect ? (r.responseMs <= 3500 ? 1 : 0.6) : 0); }, 0) / recentCount
-              : 0;
-            s.mastery = Math.max(0, Math.min(1,
-              (baseAcc * 0.35) + (recentAcc * 0.30) + (speedScore * 0.20) + (consistency * 0.15)
-            ));
-          }
-        }
-      }
-      
-      // v28: merge settings from both sides
-      if (localProgress.settings || merged.settings) {
-        var ls = localProgress.settings || {};
-        var ms = merged.settings || {};
-        merged.settings = {
-          durationSec: Math.max(ls.durationSec || ms.durationSec || 60, 30),
-          orderMode: ls.orderMode || ms.orderMode || 'mixed',
-          timeoutSec: Math.min(ls.timeoutSec || ms.timeoutSec || 12, 30),
-          reviewMixPct: Math.min(ls.reviewMixPct || ms.reviewMixPct || 30, 100),
-          adaptive: {
-            fluentMs: Math.min(ls.adaptive && ls.adaptive.fluentMs || ms.adaptive && ms.adaptive.fluentMs || 3200, 10000),
-            overdueMs: Math.max(ls.adaptive && ls.adaptive.overdueMs || ms.adaptive && ms.adaptive.overdueMs || 8000, 2000),
-            wrongWeight: Math.min(ls.adaptive && ls.adaptive.wrongWeight || ms.adaptive && ms.adaptive.wrongWeight || 1.6, 5),
-            slowWeight: Math.min(ls.adaptive && ls.adaptive.slowWeight || ms.adaptive && ms.adaptive.slowWeight || 0.9, 3)
-          }
-        };
+      function showTooltip(hit, clientX, clientY) {
+        var score = hit.getAttribute('data-score');
+        var date  = hit.getAttribute('data-date');
+        var acc   = hit.getAttribute('data-acc');
+        var fpm   = hit.getAttribute('data-fpm');
+        var lines = '<span class="tt-score">' + score + '</span>';
+        lines += date;
+        if (acc)  lines += ' &middot; ' + acc;
+        if (fpm)  lines += ' &middot; ' + fpm;
+        tooltip.innerHTML = lines;
+        tooltip.classList.add('visible');
+        var tx = clientX + 14;
+        var ty = clientY - 40;
+        if (tx + 160 > window.innerWidth) tx = clientX - 170;
+        if (ty < 6) ty = clientY + 14;
+        tooltip.style.left = tx + 'px';
+        tooltip.style.top = ty + 'px';
       }
 
-      // Bug M3 fix: apply the 200-entry cap to the merged sessionHistory so Drive
-      // doesn't accumulate unbounded history across multiple devices/sessions.
-      if (merged.sessionHistory && merged.sessionHistory.length > 200) {
-        merged.sessionHistory = merged.sessionHistory.slice(-200);
+      function hideTooltip() {
+        tooltip.classList.remove('visible');
       }
 
-      return merged;
-    }
-
-    function loadProgressFromDrive() {
-      // P15 fix: don't pull from Drive mid-round
-      if (round) { addSyncLog('load_skip', 'Mid-round'); return; }
-      if (!state.googleUser || !driveAccessToken) { addSyncLog('load_skip', 'No user/token'); return; }
-      // v28: guard against concurrent load + upload race
-      if (syncPending) { addSyncLog('load_defer', 'Sync in progress, deferring load'); return; }
-      addSyncLog('load_start', 'Pulling from Drive');
-      showSyncStatus('&#8635; Loading...', false);
-      fetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'factflow-progress.json'&fields=files(id)", {
-        headers: { 'Authorization': 'Bearer ' + driveAccessToken }
-      })
-      .then(function(r) {
-        if (!r.ok) {
-          return r.text().then(function(text) {
-            var err = new Error('Drive list failed: ' + r.status + ' ' + text);
-            err._httpStatus = r.status;
-            throw err;
-          });
-        }
-        return r.json();
-      })
-      .then(function(data) {
-        if (!data.files || data.files.length === 0) {
-          hideSyncStatus();
-          addSyncLog('load_empty', 'No Drive file found, uploading local data');
-          syncProgressToDrive(true);
-          return null;
-        }
-        driveFileId = data.files[0].id;
-        // P6 fix: send If-None-Match so unchanged files return 304 (skip merge)
-        var mediaHeaders = { 'Authorization': 'Bearer ' + driveAccessToken };
-        if (driveFileEtag) mediaHeaders['If-None-Match'] = driveFileEtag;
-        return fetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media', {
-          headers: mediaHeaders
-        });
-      })
-      .then(function(r) {
-        if (!r) return null;
-        // P6 fix: 304 means file unchanged since last pull — skip merge entirely
-        if (r.status === 304) {
-          hideSyncStatus();
-          localProgressDirty = false;
-          syncRetryEntry = null;
-          try { localStorage.setItem('factflow-sync-queue', JSON.stringify([])); } catch (e) {}
-          addSyncLog('load_304', 'File unchanged, skipping merge');
-          return null;
-        }
-        if (!r.ok) {
-          return r.text().then(function(text) {
-            var err = new Error('Drive media load failed: ' + r.status + ' ' + text);
-            err._httpStatus = r.status;
-            throw err;
-          });
-        }
-        // Capture ETag for conflict detection on next push
-        var dletag = r.headers.get('ETag') || r.headers.get('etag') || null;
-        return r.json().then(function(data) { return { data: data, etag: dletag }; });
-      })
-      .then(function(result) {
-        // result is null on 304 Not Modified — nothing to merge, already cleared flags
-        if (!result) return;
-        var driveProgress = result.data;
-        if (result.etag) driveFileEtag = result.etag;
-        var uid = STORAGE_KEY + state.googleUser.sub;
-        var localRaw = localStorage.getItem(uid);
-        var localProgress = localRaw ? JSON.parse(localRaw) : null;
-        
-        // Use smart merge instead of simple comparison
-        var mergedProgress = smartMergeProgress(driveProgress, localProgress);
-        localStorage.setItem(uid, JSON.stringify(mergedProgress));
-        // v28: apply merged settings from Drive
-        if (mergedProgress.settings) {
-          state.settings = {
-            durationSec: mergedProgress.settings.durationSec || 60,
-            orderMode: mergedProgress.settings.orderMode || 'mixed',
-            timeoutSec: mergedProgress.settings.timeoutSec || 12,
-            reviewMixPct: mergedProgress.settings.reviewMixPct || 30,
-            adaptive: {
-              fluentMs:    (mergedProgress.settings.adaptive && mergedProgress.settings.adaptive.fluentMs) || 3200,
-              overdueMs:   (mergedProgress.settings.adaptive && mergedProgress.settings.adaptive.overdueMs) || 8000,
-              wrongWeight: (mergedProgress.settings.adaptive && mergedProgress.settings.adaptive.wrongWeight) || 1.6,
-              slowWeight:  (mergedProgress.settings.adaptive && mergedProgress.settings.adaptive.slowWeight) || 0.9
-            }
-          };
-          saveSettingsToStorage();
-        }
-        // P7 fix: clear pending debounce/push so we don't echo merged data back to Drive
-        clearTimeout(syncDebounceTimer);
-        syncDebounceTimer = null;
-        syncPendingSnapshot = null;
-        hideSyncStatus();
-        localProgressDirty = false;
-        syncRetryEntry = null;
-        try { localStorage.setItem('factflow-sync-queue', JSON.stringify([])); } catch (e) {}
-        addSyncLog('load_merge_done', 'Merged state applied to localStorage');
-        renderProgressGrid();
-        renderProgressGraph();
-        renderAuthUI();
-      })
-      .catch(function(e) {
-        var msg = e.message || '';
-        var statusCode = e._httpStatus || 0;
-        if (msg.indexOf('net::') === 0 || msg.indexOf('NetworkError') !== -1 || isTransientError(statusCode, msg)) {
-          showSyncStatus('&#9888; Network error — retrying...', true);
-          scheduleRetrySync(msg);
-        } else if (msg.indexOf('401') !== -1 || msg.indexOf('403') !== -1) {
-          // P13 fix: clear stored token so we don't loop on a revoked token
-          driveAccessToken = null;
-          clearDriveTokenStorage();
-          hideSyncStatus();
-          showSyncStatus('&#9888; Drive session expired - re-authorize', true);
-          setTimeout(hideSyncStatus, 4000);
+      document.addEventListener('mousemove', function (e) {
+        var hit = e.target;
+        if (hit && hit.classList && hit.classList.contains('graph-dot-hit')) {
+          showTooltip(hit, e.clientX, e.clientY);
         } else {
-          driveAccessToken = null;
-          clearDriveTokenStorage(); // P8 fix: also clear stored token on errors
-          hideSyncStatus();
-          showSyncStatus('&#9888; Drive load failed', true);
-          console.log('FactFlow Drive load error:', e);
-          setTimeout(hideSyncStatus, 3500);
+          hideTooltip();
         }
       });
-    }
 
-    // PHASE 2.2: Retry mechanism with exponential backoff
-    function isTransientError(statusCode, errorMessage) {
-      // D4 fix: actually use statusCode. Network errors (no statusCode) are always transient.
-      if (!statusCode) return true; // Network error (no response received)
-      return statusCode >= 500 || statusCode === 408 || statusCode === 429;
-    }
+      document.addEventListener('mouseleave', hideTooltip);
 
-    function scheduleRetrySync(reason) {
-      if (!state.googleUser) return;
-      addSyncLog('retry_schedule', String(reason || ''));
-
-      var retryCount = (syncRetryEntry && syncRetryEntry.retryCount || 0) + 1;
-
-      if (retryCount > MAX_SYNC_RETRIES) {
-        showSyncStatus('&#9888; Sync failed repeatedly', true);
-        addSyncLog('sync_give_up', 'Max retries (' + MAX_SYNC_RETRIES + ') reached');
-        syncRetryEntry = null;
-        if (syncRetryTimer) { clearTimeout(syncRetryTimer); syncRetryTimer = null; }
-        setTimeout(hideSyncStatus, 3500);
-        return;
-      }
-
-      syncRetryEntry = {
-        timestamp: Date.now(),
-        retryCount: retryCount
-      };
-      var backoffMs = SYNC_RETRY_BACKOFF_BASE_MS * Math.pow(2, retryCount - 1);
-
-      if (syncRetryTimer) clearTimeout(syncRetryTimer);
-      try { localStorage.setItem('factflow-sync-queue', JSON.stringify([syncRetryEntry])); } catch (e) {}
-      showSyncStatus('&#8635; Retrying in ' + Math.round(backoffMs / 1000) + 's...', false);
-      addSyncLog('retry_wait', 'Attempt ' + retryCount + ' in ' + Math.round(backoffMs / 1000) + 's');
-      syncRetryTimer = setTimeout(function() {
-        syncRetryTimer = null;
-        triggerDriveSync();
-      }, backoffMs);
-    }
-
-    function triggerDriveSync() {
-      if (!state.googleUser) return;
-      if (!driveAccessToken) {
-        getOrRefreshDriveToken('sync', syncProgressToDrive, false);
-      } else {
-        syncProgressToDrive();
-      }
-    }
-
-    // ═══════════════════════════ PERIODIC SYNC ═══════════════════════════
-    var syncCheckInterval = null;
-    var SYNC_CHECK_INTERVAL_MS = 8000; // Check every 8 seconds during active practice
-    
-    function startPeriodicSync() {
-      if (syncCheckInterval) return; // Already running
-      if (!state.googleUser || !driveAccessToken) return;
-      syncCheckInterval = setInterval(function() {
-        if (state.googleUser && driveAccessToken && !round) {
-          getOrRefreshDriveToken('periodic', function() {
-            loadProgressFromDrive();
-            if (localProgressDirty) {
-              addSyncLog('periodic_push', 'Pushing dirty local state');
-              syncProgressToDrive();
-            }
-          }, false);
+      document.addEventListener('touchstart', function (e) {
+        var hit = e.target;
+        if (hit && hit.classList && hit.classList.contains('graph-dot-hit')) {
+          var touch = e.touches[0];
+          showTooltip(hit, touch.clientX, touch.clientY);
+          e.preventDefault();
+        } else {
+          hideTooltip();
         }
-      }, SYNC_CHECK_INTERVAL_MS);
+      }, { passive: false });
     }
-    
-    function stopPeriodicSync() {
-      if (syncCheckInterval) {
-        clearInterval(syncCheckInterval);
-        syncCheckInterval = null;
-      }
-    }
+
+    // ═════════════════════════════════════════════════ INIT ═════════════════════════════════════════════════
 
     function init() {
       cacheDom();
       initTheme();
+      updateHapticsMenuText();
+      updateMobileMode();
+      window.addEventListener('resize', updateMobileMode);
       bindEvents();
-
-      // Restore Google session if present
-      try {
-        var storedUser = localStorage.getItem('factflow-google-user');
-        if (storedUser) {
-          var u = JSON.parse(storedUser);
-          if (u && u.sub) {
-            state.googleUser = u;
-            state.demoMode   = false;
-          }
-        }
-      } catch (e) {}
-
-      // v28: Restore sync debug mode from previous session (or URL param ?syncdebug=1)
-      try {
-        if (localStorage.getItem('factflow-sync-debug') || location.search.indexOf('syncdebug=1') >= 0) { syncDebug = true; }
-      } catch(e) {}
-      if (syncDebug) { renderSyncDebugPanel(); document.getElementById('syncDebugPanel').classList.remove('hidden'); }
-      var dbgBtn = document.getElementById('settingsDebugBtn');
-      if (dbgBtn) dbgBtn.textContent = syncDebug ? 'Sync Debug: on' : 'Sync Debug: off';
-
-      // Initialize Google Sign-In UI (but don't prompt yet)
-      initGoogleSignIn();
-      
-      // If we already know the user, restore Drive token from storage and pull latest data
-      if (state.googleUser) {
-        renderAuthUI();
-        var storedToken = loadDriveTokenFromStorage();
-        if (storedToken) {
-          driveAccessToken = storedToken;
-          initDriveTokenClient();           // ready for future refreshes
-          loadProgressFromDrive();          // PULL latest from Drive immediately
-          startPeriodicSync();              // Resume periodic sync
-          startTokenExpiryCheck();          // Bug H1 fix: was missing on session restore
-        } else {
-          initDriveTokenClient();
-          getOrRefreshDriveToken('load', loadProgressFromDrive, false);
-        }
-      } else {
-        renderAuthUI();
-      }
-
-      // D5 fix: restore retry queue from localStorage on page load
-      try {
-        var savedRetry = localStorage.getItem('factflow-sync-queue');
-        if (savedRetry) {
-          var rq = JSON.parse(savedRetry);
-          if (rq && rq.length) {
-            syncRetryEntry = rq[0];
-            addSyncLog('init_restore_retry', 'Restored retry queue (attempt ' + (syncRetryEntry.retryCount || 0) + ')');
-            if (state.googleUser && syncRetryEntry && syncRetryEntry.retryCount <= MAX_SYNC_RETRIES) {
-              var backoffMs = SYNC_RETRY_BACKOFF_BASE_MS * Math.pow(2, syncRetryEntry.retryCount - 1);
-              syncRetryTimer = setTimeout(function() {
-                syncRetryTimer = null;
-                triggerDriveSync();
-              }, backoffMs);
-            }
-          }
-        }
-      } catch (e) {}
+      bindGraphInteractions();
+      renderAuthUI();
     }
 
     init();
 
-    // Page-lifecycle sync — P3 fix: single unified handler to prevent double-upload
-    // Both pagehide and beforeunload may fire (order varies by browser),
-    // so a single guard variable ensures only one upload starts.
-    function pageUnloadSync() {
-      if (state.googleUser && driveAccessToken && !syncPending && !pageUnloadSyncing) {
-        pageUnloadSyncing = true;
-        syncProgressToDrive();
-      }
-    }
-    window.addEventListener('pagehide', pageUnloadSync);
-    window.addEventListener('beforeunload', pageUnloadSync);
-
-    var visibilityDebounceTimer = null;
-    document.addEventListener('visibilitychange', function () {
-      // v28 fix: use unified pageUnloadSyncing guard
-      if (document.visibilityState === 'hidden' && state.googleUser && driveAccessToken && !syncPending && !pageUnloadSyncing) {
-        if (!round && localProgressDirty) {
-          pageUnloadSyncing = true;
-          syncProgressToDrive();
-        }
-        stopPeriodicSync();
-      }
-      // Bug M2 fix: debounce the visible handler to prevent rapid alt-tab from
-      // firing multiple concurrent loadProgressFromDrive calls that race on localStorage.
-      if (document.visibilityState === 'visible' && state.googleUser) {
-        pageUnloadSyncing = false;
-        startPeriodicSync();
-        clearTimeout(visibilityDebounceTimer);
-        visibilityDebounceTimer = setTimeout(function () {
-          visibilityDebounceTimer = null;
-          if (!round) getOrRefreshDriveToken('refresh', loadProgressFromDrive, false);
-        }, 500);
-      }
-    });
-
-    // PHASE 4.1 & 3.2: Online/offline detection — pause sync when offline, resume + retry when back online
-    window.addEventListener('offline', function () {
-      stopPeriodicSync();
-      addSyncLog('offline', 'Going offline - periodic sync paused');
-      showSyncStatus('&#9729; Offline - data saved locally', false);
-      try { localStorage.setItem('factflow-sync-queue', JSON.stringify(syncRetryEntry ? [syncRetryEntry] : [])); } catch (e) {}
-    });
-    window.addEventListener('online', function () {
-      addSyncLog('online', 'Back online - resuming sync');
-      showSyncStatus('&#9711; Back online - syncing...', false);
-      startPeriodicSync();
-      try {
-        var savedQueue = localStorage.getItem('factflow-sync-queue');
-        if (savedQueue) { var q = JSON.parse(savedQueue); syncRetryEntry = (q && q.length) ? q[0] : null; }
-      } catch (e) {}
-      if (state.googleUser) triggerDriveSync();
-    });
-
-    // bfcache recovery
-    window.addEventListener('pageshow', function (event) {
-      if (event.persisted && state.googleUser) {
-        var stored = loadDriveTokenFromStorage();
-        if (stored) driveAccessToken = stored;
-        startTokenExpiryCheck();
-        loadProgressFromDrive();
-      }
-    });
-
-    // Cross-tab sync: when another tab on the same device modifies localStorage.
-    // v28 fix: push merged result to Drive so it propagates to other devices.
+    // Cross-tab: when another tab modifies localStorage, refresh the UI.
     window.addEventListener('storage', function (e) {
-      if (!state.googleUser || !driveAccessToken) return;
-      var ourKey = STORAGE_KEY + state.googleUser.sub;
+      var ourKey = STORAGE_KEY + getUserId();
       if (e.key === ourKey && e.newValue) {
-        try {
-          var otherProgress = JSON.parse(e.newValue);
-          var uid = STORAGE_KEY + state.googleUser.sub;
-          var localRaw = localStorage.getItem(uid);
-          var localProgress = localRaw ? JSON.parse(localRaw) : null;
-          var merged = smartMergeProgress(otherProgress, localProgress);
-          localStorage.setItem(uid, JSON.stringify(merged));
-          localProgressDirty = true;
-          addSyncLog('cross_tab_merge', 'Merged data from another tab, pushing to Drive');
-          syncProgressToDrive();
-          renderProgressGrid();
-          renderProgressGraph();
-          renderAuthUI();
-        } catch (ex) {
-          addSyncLog('cross_tab_error', 'Storage event merge failed: ' + (ex.message || ex));
-        }
+        renderProgressGrid();
+        renderProgressGraph();
+        updatePracticeHeader();
+        updateTodaysQuizDisplay();
+        updateBestSpeedDisplay();
       }
     });
   })();
   
-    // --- Graph show-all-dates toggle ---
-    (function() {
-      var btn = document.getElementById('graphToggleBtn');
-      if (!btn) return;
-      btn.addEventListener('click', function() {
-        graphShowAllLabels = !graphShowAllLabels;
-        btn.textContent = graphShowAllLabels ? 'Fewer dates' : 'Show all dates';
-        btn.style.opacity = graphShowAllLabels ? '1' : '0.7';
-        btn.style.color = graphShowAllLabels ? 'var(--color-primary)' : '';
-        btn.style.borderColor = graphShowAllLabels ? 'var(--color-primary)' : '';
-        renderProgressGraph();
-      });
-    })();
-
-    // --- Graph hover tooltip ---
-    (function() {
-      var tooltip = document.getElementById('graphTooltip');
-      if (!tooltip) return;
-      document.addEventListener('mousemove', function(e) {
-        var hit = e.target;
-        if (hit && hit.classList && hit.classList.contains('graph-dot-hit')) {
-          var score = hit.getAttribute('data-score');
-          var date  = hit.getAttribute('data-date');
-          var acc   = hit.getAttribute('data-acc');
-          var fpm   = hit.getAttribute('data-fpm');
-          var lines = '<span class="tt-score">' + score + '</span>';
-          lines += date;
-          if (acc)  lines += ' &middot; ' + acc;
-          if (fpm)  lines += ' &middot; ' + fpm;
-          tooltip.innerHTML = lines;
-          tooltip.classList.add('visible');
-          var tx = e.clientX + 14;
-          var ty = e.clientY - 40;
-          if (tx + 160 > window.innerWidth)  tx = e.clientX - 170;
-          if (ty < 6) ty = e.clientY + 14;
-          tooltip.style.left = tx + 'px';
-          tooltip.style.top  = ty + 'px';
-        } else {
-          tooltip.classList.remove('visible');
-        }
-      });
-      document.addEventListener('mouseleave', function() {
-        tooltip.classList.remove('visible');
-      });
-      // Touch support
-      document.addEventListener('touchstart', function(e) {
-        var hit = e.target;
-        if (hit && hit.classList && hit.classList.contains('graph-dot-hit')) {
-          var score = hit.getAttribute('data-score');
-          var date  = hit.getAttribute('data-date');
-          var acc   = hit.getAttribute('data-acc');
-          var fpm   = hit.getAttribute('data-fpm');
-          var lines = '<span class="tt-score">' + score + '</span>';
-          lines += date;
-          if (acc)  lines += ' &middot; ' + acc;
-          if (fpm)  lines += ' &middot; ' + fpm;
-          tooltip.innerHTML = lines;
-          tooltip.classList.add('visible');
-          var touch = e.touches[0];
-          tooltip.style.left = (touch.clientX + 14) + 'px';
-          tooltip.style.top  = (touch.clientY - 50) + 'px';
-          e.preventDefault();
-        } else {
-          tooltip.classList.remove('visible');
-        }
-      }, { passive: false });
-    })();
 
   </script>
 </body>
