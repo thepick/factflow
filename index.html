@@ -510,6 +510,46 @@
       body.mobile-play-mode.round-active .progress-graph-wrap { display: none; }
     }
 
+
+    /* ──── Floating mobile corner timer ──── */
+    #mobileCornerTimer {
+      display: none;
+      position: fixed;
+      top: var(--space-3);
+      right: var(--space-3);
+      z-index: 900;
+      min-width: 54px;
+      text-align: center;
+      padding: 0.3rem 0.6rem;
+      border-radius: var(--radius-full);
+      background: var(--color-surface-2);
+      border: 2px solid var(--color-border);
+      color: var(--color-text-muted);
+      font-size: 1.05rem;
+      font-weight: 800;
+      line-height: 1.3;
+      box-shadow: var(--shadow-md);
+      pointer-events: none;
+      transition: background 0.4s ease, border-color 0.4s ease, color 0.4s ease;
+      letter-spacing: -0.02em;
+    }
+    #mobileCornerTimer.warn {
+      background: var(--color-gold-highlight);
+      border-color: var(--color-gold);
+      color: var(--color-text);
+    }
+    #mobileCornerTimer.danger {
+      background: var(--color-error-highlight);
+      border-color: var(--color-error);
+      color: var(--color-error);
+      animation: timerPulse 0.6s ease-in-out infinite alternate;
+    }
+    @keyframes timerPulse {
+      0%   { transform: scale(1); }
+      100% { transform: scale(1.1); }
+    }
+    body.mobile-play-mode.round-active #mobileCornerTimer { display: block; }
+
     /* ──── Settings dropdown ──── */
     .settings-menu-wrap { position: relative; }
     .settings-dropdown {
@@ -807,12 +847,12 @@
                 </svg>
               </span>
               <span class="settings-text">
-                <span class="settings-title">Haptic feedback</span>
+                <span class="settings-title">Haptic Feedback</span>
                 <span class="settings-subtitle" id="hapticsStatusText">On</span>
               </span>
-              <button type="button" id="hapticsTestBtn" title="Test vibration"
-                style="padding:0.28rem 0.6rem;font-size:0.72rem;border-radius:var(--radius-full);background:var(--color-surface-offset);border:1px solid color-mix(in oklab,var(--color-text) 12%,transparent);color:var(--color-text-muted);cursor:pointer;white-space:nowrap;line-height:1.4;margin-left:auto">
-                Test
+              <button type="button" id="hapticsInfoBtn" aria-label="Haptic feedback information"
+                style="width:20px;height:20px;border-radius:var(--radius-full);display:inline-grid;place-items:center;background:var(--color-surface-offset);color:var(--color-text-muted);border:1px solid color-mix(in oklab,var(--color-text) 12%,transparent);font-size:0.7rem;font-weight:900;line-height:1;flex-shrink:0;margin-left:auto">
+                i
               </button>
               <span class="settings-check" aria-hidden="true">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
@@ -933,7 +973,7 @@
 
         <!-- Right: progress grid -->
         <aside class="panel pg-panel" id="progressGridPanel">
-          <h2>Your progress</h2>
+          <h2>Your Progress</h2>
           <div class="pg-table" id="progressGrid"></div>
           <div class="pg-legend">
             <span><span class="swatch fl"></span> Fluent</span>
@@ -941,7 +981,7 @@
             <span><span class="swatch lk"></span> Locked</span>
           </div>
           <div class="progress-graph-wrap">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3)"><h3 style="margin-bottom:0">Mastery over time</h3><button type="button" id="graphToggleBtn" class="btn-ghost" style="font-size:0.68rem;padding:0.2rem 0.5rem;min-height:auto;border-radius:var(--radius-full);opacity:0.7;letter-spacing:0.03em" title="Toggle between recent and all saved quiz results">Show all results</button></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3)"><h3 style="margin-bottom:0">Mastery Over Time</h3><button type="button" id="graphToggleBtn" class="btn-ghost" style="font-size:0.68rem;padding:0.2rem 0.5rem;min-height:auto;border-radius:var(--radius-full);opacity:0.7;letter-spacing:0.03em" title="Toggle between recent and all saved quiz results">Show all results</button></div>
             <div class="progress-graph" id="progressGraph" aria-label="Progress Graph"></div>
           </div>
         </aside>
@@ -950,10 +990,29 @@
   </div>
 
 
+  <div class="info-overlay hidden" id="hapticsInfoOverlay" role="dialog" aria-modal="true" aria-labelledby="hapticsInfoTitle">
+    <div class="info-card" role="document">
+      <div class="info-card-header">
+        <h2 id="hapticsInfoTitle">Haptic Feedback</h2>
+        <button type="button" class="info-close-btn" id="hapticsInfoCloseBtn" aria-label="Close information">x</button>
+      </div>
+      <p>When you answer a question, the device briefly vibrates to give feedback. This uses the browser's Vibration API, which is not supported by every mobile browser.</p>
+      <ul>
+        <li><strong>Works:</strong> Chrome, Brave, Samsung Internet, and Edge on Android</li>
+        <li><strong>Does not work:</strong> Firefox on Android (API removed in 2020), DuckDuckGo on Android (API blocked for privacy)</li>
+        <li><strong>Not applicable:</strong> iOS - Apple does not allow vibration from web pages</li>
+      </ul>
+      <p>If your device supports it, make sure vibration is turned on in your phone's sound or accessibility settings.</p>
+      <div class="row" style="justify-content:flex-end;margin-top:var(--space-3)">
+        <button type="button" class="btn" id="hapticsInfoDoneBtn">Got it</button>
+      </div>
+    </div>
+  </div>
+
   <div class="info-overlay hidden" id="scoreInfoOverlay" role="dialog" aria-modal="true" aria-labelledby="scoreInfoTitle">
     <div class="info-card" role="document">
       <div class="info-card-header">
-        <h2 id="scoreInfoTitle">How the mastery score works</h2>
+        <h2 id="scoreInfoTitle">How the Mastery Score Works</h2>
         <button type="button" class="info-close-btn" id="scoreInfoCloseBtn" aria-label="Close information">x</button>
       </div>
       <p>Your score is mostly based on how many multiplication facts you have mastered.</p>
@@ -971,6 +1030,7 @@
     </div>
   </div>
 
+  <div id="mobileCornerTimer" aria-live="polite" aria-label="Time remaining"></div>
   <div class="levelup-toast" id="levelupToast" aria-live="polite"></div>
   <div class="graph-tooltip" id="graphTooltip"></div>
   <script>
@@ -1066,8 +1126,11 @@
       el.themeDarkBtn = document.getElementById('themeDarkBtn');
       el.themeSystemBtn = document.getElementById('themeSystemBtn');
       el.hapticsToggleBtn = document.getElementById('hapticsToggleBtn');
-      el.hapticsStatusText = document.getElementById('hapticsStatusText');
-      el.hapticsTestBtn    = document.getElementById('hapticsTestBtn');
+      el.hapticsStatusText   = document.getElementById('hapticsStatusText');
+      el.hapticsInfoBtn      = document.getElementById('hapticsInfoBtn');
+      el.hapticsInfoOverlay  = document.getElementById('hapticsInfoOverlay');
+      el.hapticsInfoCloseBtn = document.getElementById('hapticsInfoCloseBtn');
+      el.hapticsInfoDoneBtn  = document.getElementById('hapticsInfoDoneBtn');
       el.scoreInfoOverlay = document.getElementById('scoreInfoOverlay');
       el.scoreInfoCloseBtn = document.getElementById('scoreInfoCloseBtn');
       el.scoreInfoDoneBtn = document.getElementById('scoreInfoDoneBtn');
@@ -1089,6 +1152,7 @@
       el.fpmFill = document.getElementById('fpmFill');
       el.fpmRunner = document.getElementById('fpmRunner');
       el.timeLeftStat = document.getElementById('timeLeftStat');
+      el.mobileCornerTimer = document.getElementById('mobileCornerTimer');
       el.keyButtons = Array.from(document.querySelectorAll('.key-btn'));
     }
 
@@ -1478,6 +1542,7 @@
     function stopRound(save) {
       var finalFpm = (save && round) ? getRoundFpm(round) : 0;
       document.body.classList.remove('round-active');
+      if (el.mobileCornerTimer) { el.mobileCornerTimer.classList.remove('danger', 'warn'); el.mobileCornerTimer.textContent = ''; }
       clearInterval(roundTimer); roundTimer = null;
       clearTimeout(timeoutTimer); timeoutTimer = null;
       hideTimeoutOverlay();
@@ -1497,7 +1562,7 @@
         el.startBtn.textContent = 'Start Round';
       }
       round = null;
-      el.problemText.textContent = 'Ready?';
+      el.problemText.textContent = save ? "Time’s up!" : 'Ready?';
       setStatus(el.roundStatus, 'Round finished. Start another!', '');
       renderProgressGrid();
       renderProgressGraph();
@@ -1509,11 +1574,16 @@
       var left = Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000));
       el.timeLeftValue.textContent = String(left);
       updateSpeedUi(getLiveFpm());
+      var isDanger = left > 0 && left <= Math.round(round.durationSec / 10);
+      var isWarn   = left > 0 && !isDanger && left <= Math.round(round.durationSec / 3);
       if (el.timeLeftStat) {
-        var isDanger = left > 0 && left <= Math.round(round.durationSec / 10);
-        var isWarn   = left > 0 && !isDanger && left <= Math.round(round.durationSec / 3);
         el.timeLeftStat.classList.toggle('time-danger', isDanger);
         el.timeLeftStat.classList.toggle('time-warn', isWarn);
+      }
+      if (el.mobileCornerTimer) {
+        el.mobileCornerTimer.textContent = String(left) + 's';
+        el.mobileCornerTimer.classList.toggle('danger', isDanger);
+        el.mobileCornerTimer.classList.toggle('warn', isWarn && !isDanger);
       }
       if (left <= 0) stopRound(true);
     }
@@ -2063,7 +2133,7 @@
 
       // Empty state message
       if (!history.length) {
-        svg += '<text class="graph-empty" x="' + (width / 2) + '" y="' + (top + plotH / 2) + '" text-anchor="middle">Finish a session to start the graph</text>';
+        svg += '<text class="graph-empty" x="' + (left + plotW / 2) + '" y="' + (top + plotH / 2) + '" text-anchor="middle">Finish a session to start the graph</text>';
       }
 
       svg += '</svg>';
@@ -2138,7 +2208,7 @@
     function updatePracticeHeader() {
       var progress = loadProgress();
       var model = getActiveModel(progress);
-      el.practiceTitle.textContent = 'x' + progress.currentTable + ' Tables';
+      el.practiceTitle.textContent = '×' + progress.currentTable + ' Tables';
       el.practiceSubtitle.textContent = model.activeFacts.length + ' facts active through \u00d7' + model.maxSecond;
     }
 
@@ -2146,7 +2216,7 @@
       el.practiceLayout.classList.remove('hidden');
       el.startBtn.disabled = false;
       var uiProgress = loadProgress();
-      setStatus(el.roundStatus, 'Ready. Press Start when you\'re ready.', '');
+      setStatus(el.roundStatus, 'Press Start when you\'re ready.', '');
       updatePracticeHeader();
       renderProgressGrid();
       renderProgressGraph();
@@ -2231,6 +2301,9 @@
           startBtnCooldown = null;
           el.startBtn.disabled = false;
           el.startBtn.textContent = 'Start Round';
+          if (el.problemText && el.problemText.textContent === "Time’s up!") {
+            el.problemText.textContent = 'Ready?';
+          }
         } else {
           el.startBtn.textContent = 'Wait ' + remaining + '...';
         }
@@ -2393,6 +2466,16 @@
       if (el.scoreInfoOverlay) el.scoreInfoOverlay.classList.add('hidden');
     }
 
+    function openHapticsInfo() {
+      if (!el.hapticsInfoOverlay) return;
+      el.hapticsInfoOverlay.classList.remove('hidden');
+      if (el.hapticsInfoCloseBtn) el.hapticsInfoCloseBtn.focus();
+    }
+
+    function closeHapticsInfo() {
+      if (el.hapticsInfoOverlay) el.hapticsInfoOverlay.classList.add('hidden');
+    }
+
     // ═══════════════════════════ EVENTS ═══════════════════════════
     function bindEvents() {
       if (el.themeLightBtn) {
@@ -2404,13 +2487,17 @@
       if (el.themeSystemBtn) {
         el.themeSystemBtn.addEventListener('click', function () { setThemePref('system'); closeSettingsMenu(); });
       }
-      if (el.hapticsTestBtn) {
-        el.hapticsTestBtn.addEventListener('click', function (e) {
+      if (el.hapticsInfoBtn) {
+        el.hapticsInfoBtn.addEventListener('click', function (e) {
           e.stopPropagation();
-          var ok = buzz([30, 20, 30, 20, 30]);
-          var btn = el.hapticsTestBtn;
-          btn.textContent = ok ? 'Felt it?' : 'Not supported';
-          setTimeout(function () { btn.textContent = 'Test'; }, 2500);
+          openHapticsInfo();
+        });
+      }
+      if (el.hapticsInfoCloseBtn) el.hapticsInfoCloseBtn.addEventListener('click', closeHapticsInfo);
+      if (el.hapticsInfoDoneBtn)  el.hapticsInfoDoneBtn.addEventListener('click', closeHapticsInfo);
+      if (el.hapticsInfoOverlay) {
+        el.hapticsInfoOverlay.addEventListener('click', function (e) {
+          if (e.target === el.hapticsInfoOverlay) closeHapticsInfo();
         });
       }
       if (el.hapticsToggleBtn) {
