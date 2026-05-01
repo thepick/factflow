@@ -747,6 +747,36 @@
     background: var(--color-primary-highlight);
     color: var(--color-primary);
   }
+  .sync-badge-local {
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.18);
+    color: var(--color-text-inverse);
+    padding: 0.35rem 0.65rem;
+    gap: 0.45rem;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .sync-badge-local.syncing {
+    background: rgba(255,255,255,0.22);
+  }
+  .sync-badge-local.synced {
+    background: rgba(67,122,34,0.26);
+  }
+  .sync-badge-local.offline,
+  .sync-badge-local.error {
+    background: rgba(161,44,123,0.22);
+  }
+  @media (max-width: 500px) {
+    #syncBadge.sync-badge-local {
+      display: flex;
+    }
+    .sync-badge-local {
+      max-width: 126px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
 </style>
 <script>
   (function(){
@@ -762,6 +792,7 @@
     document.documentElement.setAttribute('data-theme', t);
   })();
 </script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png">
@@ -782,7 +813,12 @@
         <h1>FactFlow</h1>
       </div>
       <div class="header-actions">
-        <div class="user-info local-badge">Data saved on this device</div>
+        <div id="syncBadge" class="user-info local-badge sync-badge-local" title="Sync status">
+          <span id="syncBadgeText">Saved on this device</span>
+        </div>
+        <button type="button" class="icon-btn" id="googleSignInBtn" aria-label="Sign in with Google" title="Sign in with Google Drive sync">
+          G
+        </button>
 
         <div class="settings-menu-wrap" id="settingsMenuWrap">
           <button type="button" class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings">
@@ -869,17 +905,37 @@
                   </svg>
                 </span>
                 <span class="settings-text">
-                  <span class="settings-title">Reset all progress...</span>
-                  <span class="settings-subtitle">Delete saved results on this device</span>
+                  <span class="settings-title">Reset progress...</span>
+                  <span class="settings-subtitle">Choose what to delete</span>
                 </span>
                 <span class="settings-check" aria-hidden="true"></span>
               </button>
             </div>
             <div id="resetConfirm" class="settings-confirm-box" style="display:none;">
-              <p>This permanently deletes all saved progress. There is no undo.</p>
-              <button type="button" class="settings-item danger" id="settingsConfirmResetBtn">Yes, delete everything</button>
+              <p id="resetConfirmText">Choose how to reset progress. This cannot be undone.</p>
+              <button type="button" class="settings-item danger" id="settingsConfirmResetLocalBtn">Reset this device only</button>
+              <button type="button" class="settings-item danger" id="settingsConfirmResetCloudBtn">Reset this device and Google Drive sync</button>
               <button type="button" class="settings-item" id="settingsCancelResetBtn">Cancel</button>
             </div>
+
+            <div class="settings-divider"></div>
+            <div class="settings-section-label">Sync</div>
+            <button type="button" class="settings-item settings-item-row" id="settingsSyncNowBtn">
+              <span class="settings-icon" aria-hidden="true">G</span>
+              <span class="settings-text">
+                <span class="settings-title">Sync now</span>
+                <span class="settings-subtitle" id="settingsSyncStatusText">Saved on this device</span>
+              </span>
+              <span class="settings-check" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="settings-item settings-item-row" id="settingsSignOutBtn" style="display:none;">
+              <span class="settings-icon" aria-hidden="true">x</span>
+              <span class="settings-text">
+                <span class="settings-title">Sign out of Google sync</span>
+                <span class="settings-subtitle">Keep using this device locally</span>
+              </span>
+              <span class="settings-check" aria-hidden="true"></span>
+            </button>
           </div>
         </div>
       </div>
@@ -1037,6 +1093,23 @@
   (function () {
     'use strict';
 
+    // Google Drive sync config.
+    var GOOGLE_CLIENT_ID = 'PASTE_YOUR_CLIENT_ID_HERE.apps.googleusercontent.com';
+    var GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+    var DRIVE_FILE_NAME = 'factflow-progress-v1.json';
+    var DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
+    var DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
+
+    // Sync timing.
+    var SYNC_PULL_INTERVAL_MS = 15000;
+    var SYNC_SAVE_DEBOUNCE_MS = 3000;
+    var SYNC_BEFORE_ROUND_MAX_AGE_MS = 10000;
+    var GOOGLE_AUTH_MAX_INIT_ATTEMPTS = 20;
+
+    // Local sync metadata keys.
+    var LOCAL_DEVICE_ID_KEY = 'factflow-device-id';
+    var SYNC_ENABLED_KEY = 'factflow-sync-enabled-before';
+
     // ═══════════════════════════ CONFIG ═══════════════════════════
     var STORAGE_KEY         = 'factflow-progress-';  // localStorage key prefix
     var SETTINGS_KEY       = 'factflow-settings';    // persist teacher settings
@@ -1099,6 +1172,27 @@
     var graphShowAllResults = false; // Toggle: show all saved quiz results instead of only recent results
     var startBtnCooldown = null; // Post-round delay interval
 
+    // Google Drive sync state.
+    var syncState = {
+      available: false,
+      signedIn: false,
+      tokenClient: null,
+      accessToken: null,
+      tokenExpiresAt: 0,
+      driveFileId: null,
+      driveModifiedTime: null,
+      isSyncing: false,
+      pendingPush: false,
+      saveTimer: null,
+      pollTimer: null,
+      lastPullAt: 0,
+      lastPushAt: 0,
+      lastError: null,
+      deviceId: null,
+      localSaveCounter: 0,
+      lastSyncedLocalSaveCounter: 0
+    };
+
     // ═══════════════════════════ DOM REFS ═══════════════════════════
     var el = {};
     function cacheDom() {
@@ -1120,7 +1214,6 @@
       el.settingsBtn = document.getElementById('settingsBtn');
       el.settingsDropdown = document.getElementById('settingsDropdown');
       el.settingsResetBtn = document.getElementById('settingsResetBtn');
-      el.settingsConfirmResetBtn = document.getElementById('settingsConfirmResetBtn');
       el.settingsCancelResetBtn = document.getElementById('settingsCancelResetBtn');
       el.themeLightBtn = document.getElementById('themeLightBtn');
       el.themeDarkBtn = document.getElementById('themeDarkBtn');
@@ -1154,6 +1247,14 @@
       el.timeLeftStat = document.getElementById('timeLeftStat');
       el.mobileCornerTimer = document.getElementById('mobileCornerTimer');
       el.keyButtons = Array.from(document.querySelectorAll('.key-btn'));
+      el.syncBadge = document.getElementById('syncBadge');
+      el.syncBadgeText = document.getElementById('syncBadgeText');
+      el.googleSignInBtn = document.getElementById('googleSignInBtn');
+      el.settingsSyncNowBtn = document.getElementById('settingsSyncNowBtn');
+      el.settingsSyncStatusText = document.getElementById('settingsSyncStatusText');
+      el.settingsSignOutBtn = document.getElementById('settingsSignOutBtn');
+      el.settingsConfirmResetLocalBtn = document.getElementById('settingsConfirmResetLocalBtn');
+      el.settingsConfirmResetCloudBtn = document.getElementById('settingsConfirmResetCloudBtn');
     }
 
     // ═══════════════════════════ SETTINGS ═══════════════════════════
@@ -1205,6 +1306,75 @@
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch(e) {}
     }
 
+    // ═══════════════════════════ SYNC UTILITIES ═══════════════════════════
+    function cloneJson(obj) {
+      if (!obj) return null;
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    function nowIso() {
+      return new Date().toISOString();
+    }
+
+    function nowMs() {
+      return Date.now();
+    }
+
+    function makeRandomSuffix() {
+      return Math.random().toString(36).slice(2, 10);
+    }
+
+    function getDeviceId() {
+      var id = null;
+      try {
+        id = localStorage.getItem(LOCAL_DEVICE_ID_KEY);
+        if (!id) {
+          id = 'device-' + Date.now() + '-' + makeRandomSuffix();
+          localStorage.setItem(LOCAL_DEVICE_ID_KEY, id);
+        }
+      } catch (e) {
+        id = 'ephemeral-' + Date.now() + '-' + makeRandomSuffix();
+        setSyncStatus('local', 'Local device ID is temporary');
+      }
+      return id;
+    }
+
+    function isGoogleClientConfigured() {
+      return GOOGLE_CLIENT_ID && GOOGLE_CLIENT_ID.indexOf('PASTE_') !== 0 && GOOGLE_CLIENT_ID.indexOf('.apps.googleusercontent.com') > -1;
+    }
+
+    function hasSyncEnabledBefore() {
+      try {
+        return localStorage.getItem(SYNC_ENABLED_KEY) === 'true';
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function setSyncEnabledBefore(enabled) {
+      try {
+        if (enabled) localStorage.setItem(SYNC_ENABLED_KEY, 'true');
+        else localStorage.removeItem(SYNC_ENABLED_KEY);
+      } catch (e) {}
+    }
+
+    function blankProgress() {
+      return { currentTable: STARTING_TABLE, factStats: {}, sessionsCompleted: 0, sessionHistory: [], allTimeBestStreak: 0, allTimeBestFpm: 0, dailyQuizCounts: {} };
+    }
+
+    function normalizeProgressForSave(p) {
+      if (!p) return blankProgress();
+      if (!p.factStats) p.factStats = {};
+      if (!p.sessionHistory) p.sessionHistory = [];
+      if (p.currentTable == null || p.currentTable < STARTING_TABLE) p.currentTable = STARTING_TABLE;
+      if (p.currentTable > MAX_TABLE) p.currentTable = MAX_TABLE;
+      if (p.sessionsCompleted == null) p.sessionsCompleted = 0;
+      if (p.allTimeBestStreak == null) p.allTimeBestStreak = 0;
+      if (p.allTimeBestFpm == null) p.allTimeBestFpm = 0;
+      if (!p.dailyQuizCounts) p.dailyQuizCounts = {};
+      return p;
+    }
+
     // ═══════════════════════════ PROGRESS ═══════════════════════════
     function getUserId() {
       return 'local-user';
@@ -1232,12 +1402,34 @@
       } catch (e) { return defaultProgress(); }
     }
 
-    function saveProgressToStorage(progress) {
+    function saveProgressToStorage(progress, opts) {
+      opts = opts || {};
       var uid = getUserId();
       if (!uid) return;
-      progress.updatedAt = new Date().toISOString();
-      progress.settings = copySettings(state.settings);
-      localStorage.setItem(STORAGE_KEY + uid, JSON.stringify(progress));
+
+      var saved = cloneJson(progress) || blankProgress();
+      saved = normalizeProgressForSave(saved);
+      saved.updatedAt = nowIso();
+      saved.updatedAtMs = nowMs();
+
+      // Settings are intentionally device-local.
+      saved.settings = copySettings(state.settings);
+
+      try {
+        localStorage.setItem(STORAGE_KEY + uid, JSON.stringify(saved));
+      } catch (e) {
+        setSyncStatus('error', 'Could not save on this device');
+        return;
+      }
+
+      if (!opts.skipSync) {
+        syncState.localSaveCounter += 1;
+        queueDrivePush(opts.reason || 'local-save', false);
+      }
+    }
+
+    function saveProgressLocalOnly(progress, reason) {
+      saveProgressToStorage(progress, { skipSync: true, reason: reason || 'local-only' });
     }
 
     function getLocalDateKey(date) {
@@ -1274,6 +1466,810 @@
 
     function updateBestSpeedDisplay(progress) {
       if (el.bestSpeedValue) el.bestSpeedValue.textContent = getBestSpeedText(progress);
+    }
+
+    function refreshProgressUi() {
+      renderProgressGrid();
+      renderProgressGraph();
+      updatePracticeHeader();
+      var p = loadProgress();
+      updateTodaysQuizDisplay(p);
+      updateBestSpeedDisplay(p);
+    }
+
+    // ═══════════════════════════ SYNC STATUS ═══════════════════════════
+    function setSyncStatus(status, message) {
+      var text = message || '';
+      if (!text) {
+        if (status === 'local') text = 'Saved on this device';
+        else if (status === 'syncing') text = 'Syncing...';
+        else if (status === 'synced') text = 'Synced';
+        else if (status === 'offline') text = 'Offline - will sync later';
+        else if (status === 'error') text = 'Sync needs attention';
+        else text = 'Saved on this device';
+      }
+
+      if (el.syncBadge) {
+        el.syncBadge.classList.remove('syncing', 'synced', 'offline', 'error');
+        if (status) el.syncBadge.classList.add(status);
+        el.syncBadge.title = text;
+      }
+      if (el.syncBadgeText) el.syncBadgeText.textContent = text;
+      if (el.settingsSyncStatusText) el.settingsSyncStatusText.textContent = text;
+      if (el.settingsSignOutBtn) el.settingsSignOutBtn.style.display = syncState.signedIn ? 'block' : 'none';
+    }
+
+    // ═══════════════════════════ DRIVE FILE SHAPE ═══════════════════════════
+    function wrapProgressForDrive(progress) {
+      var stampMs = nowMs();
+      return {
+        schemaVersion: 1,
+        app: 'FactFlow',
+        updatedAt: new Date(stampMs).toISOString(),
+        updatedAtMs: stampMs,
+        deviceId: syncState.deviceId || getDeviceId(),
+        progress: cloneJson(progress) || blankProgress(),
+        syncMeta: {
+          lastWriter: syncState.deviceId || getDeviceId()
+        }
+      };
+    }
+
+    function unwrapDriveProgress(data) {
+      if (!data) return null;
+      if (data.app === 'FactFlow' && data.progress) return data.progress;
+      if (data.factStats || data.sessionHistory || typeof data.currentTable !== 'undefined') return data;
+      return null;
+    }
+
+    // ═══════════════════════════ GOOGLE AUTH ═══════════════════════════
+    function initGoogleAuth(attempt) {
+      attempt = attempt || 0;
+
+      if (!isGoogleClientConfigured()) {
+        syncState.available = false;
+        setSyncStatus('local', 'Saved on this device');
+        return;
+      }
+
+      if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+        if (attempt >= GOOGLE_AUTH_MAX_INIT_ATTEMPTS) {
+          syncState.available = false;
+          setSyncStatus('local', 'Sync unavailable');
+          return;
+        }
+        setTimeout(function () {
+          initGoogleAuth(attempt + 1);
+        }, 500);
+        return;
+      }
+
+      syncState.tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: GOOGLE_DRIVE_SCOPE,
+        callback: handleTokenResponse,
+        error_callback: function (e) {
+          syncState.lastError = e;
+          setSyncStatus('error', 'Google sign-in failed');
+        }
+      });
+
+      syncState.available = true;
+      setSyncStatus('local', 'Saved on this device');
+
+      if (hasSyncEnabledBefore()) {
+        setSyncStatus('syncing', 'Restoring Google sync...');
+        requestGoogleTokenRefresh('none')
+          .then(function () {
+            onGoogleSignedIn();
+          })
+          .catch(function () {
+            setSyncStatus('local', 'Sign in to sync');
+          });
+      }
+    }
+
+    function requestGoogleSignIn() {
+      if (!syncState.tokenClient) {
+        setSyncStatus('error', 'Google sync is still loading');
+        return;
+      }
+      setSyncStatus('syncing', 'Opening Google sign-in...');
+
+      syncState.tokenClient.requestAccessToken({ prompt: 'select_account' });
+    }
+
+    function requestGoogleTokenRefresh(promptValue) {
+      if (!syncState.tokenClient) return Promise.reject(new Error('Google auth is not ready'));
+      return new Promise(function (resolve, reject) {
+        var oldCallback = syncState.tokenClient.callback;
+        var finished = false;
+        var timeoutId = setTimeout(function () {
+          if (finished) return;
+          finished = true;
+          syncState.tokenClient.callback = oldCallback;
+          reject(new Error('Token refresh timed out'));
+        }, 8000);
+
+        syncState.tokenClient.callback = function (tokenResponse) {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timeoutId);
+          syncState.tokenClient.callback = oldCallback;
+          if (!tokenResponse || tokenResponse.error) {
+            reject(new Error(tokenResponse && tokenResponse.error ? tokenResponse.error : 'Token refresh failed'));
+            return;
+          }
+          applyTokenResponse(tokenResponse);
+          resolve(tokenResponse);
+        };
+        try {
+          syncState.tokenClient.requestAccessToken({ prompt: typeof promptValue === 'string' ? promptValue : '' });
+        } catch (e) {
+          if (!finished) {
+            finished = true;
+            clearTimeout(timeoutId);
+            syncState.tokenClient.callback = oldCallback;
+            reject(e);
+          }
+        }
+      });
+    }
+
+    function handleTokenResponse(tokenResponse) {
+      if (!tokenResponse || tokenResponse.error) {
+        setSyncStatus('error', 'Google sign-in failed');
+        return;
+      }
+      applyTokenResponse(tokenResponse);
+      onGoogleSignedIn();
+    }
+
+    function applyTokenResponse(tokenResponse) {
+      syncState.accessToken = tokenResponse.access_token;
+      syncState.tokenExpiresAt = nowMs() + ((tokenResponse.expires_in || 3600) - 60) * 1000;
+      syncState.signedIn = true;
+      syncState.lastError = null;
+      setSyncEnabledBefore(true);
+    }
+
+    function isTokenValid() {
+      return !!(syncState.accessToken && nowMs() < syncState.tokenExpiresAt);
+    }
+
+    // ═══════════════════════════ SIGN IN / OUT ═══════════════════════════
+    function onGoogleSignedIn() {
+      syncState.deviceId = syncState.deviceId || getDeviceId();
+      setSyncStatus('syncing', 'Syncing...');
+      syncNow('sign-in')
+        .then(function () {
+          startSyncPolling();
+          setSyncStatus('synced', 'Synced');
+        })
+        .catch(function (e) {
+          syncState.lastError = e;
+          setSyncStatus('error', 'Sync needs attention');
+        });
+    }
+
+    function signOutOfSync() {
+      if (syncState.saveTimer) {
+        clearTimeout(syncState.saveTimer);
+        syncState.saveTimer = null;
+      }
+      stopSyncPolling();
+      syncState.pendingPush = false;
+      syncState.signedIn = false;
+      syncState.accessToken = null;
+      syncState.tokenExpiresAt = 0;
+      syncState.driveFileId = null;
+      syncState.driveModifiedTime = null;
+      syncState.isSyncing = false;
+      setSyncEnabledBefore(false);
+
+      setSyncStatus('local', 'Saved on this device');
+    }
+
+    // ═══════════════════════════ DRIVE FETCH ═══════════════════════════
+    function isAuthError(e) {
+      return e && (e.status === 401 || e.status === 403 || e.message === 'TOKEN_EXPIRED' || e.message === 'NO_TOKEN');
+    }
+
+    function driveFetch(url, options) {
+      options = options || {};
+
+      if (url.indexOf('https://www.googleapis.com/') !== 0) {
+        return Promise.reject(new Error('Blocked non-Google API URL'));
+      }
+
+      if (!isTokenValid()) {
+        return Promise.reject(new Error('TOKEN_EXPIRED'));
+      }
+
+      options.headers = options.headers || {};
+      options.headers.Authorization = 'Bearer ' + syncState.accessToken;
+
+      return fetch(url, options).then(function (r) {
+        if (r.status === 401 || r.status === 403) {
+          var err = new Error('AUTH_ERROR');
+          err.status = r.status;
+          throw err;
+        }
+        return r;
+      });
+    }
+
+    // ═══════════════════════════ DRIVE FILE DISCOVERY ═══════════════════════════
+    function findDriveFile() {
+      if (syncState.driveFileId) return Promise.resolve(syncState.driveFileId);
+
+      var q = "name='" + DRIVE_FILE_NAME.replace(/'/g, "\\'") + "' and trashed=false";
+      var url = DRIVE_API_BASE + '/files?spaces=appDataFolder&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&q=' + encodeURIComponent(q);
+
+      return driveFetch(url, { method: 'GET' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var files = data.files || [];
+          if (!files.length) return null;
+
+          syncState.driveFileId = files[0].id;
+          syncState.driveModifiedTime = files[0].modifiedTime || null;
+
+          if (files.length > 1) {
+            return mergeDuplicateDriveFiles(files).then(function () {
+              return syncState.driveFileId;
+            });
+          }
+
+          return syncState.driveFileId;
+        });
+    }
+
+    function mergeDuplicateDriveFiles(files) {
+      var newestFile = files[0];
+      var downloadPromises = files.map(function (f) {
+        return downloadDriveProgress(f.id).catch(function () { return null; });
+      });
+      return Promise.all(downloadPromises).then(function (results) {
+        var localProgress = loadProgress();
+        var merged = cloneJson(localProgress) || blankProgress();
+        for (var i = 0; i < results.length; i++) {
+          var cloudP = unwrapDriveProgress(results[i]);
+          if (cloudP) {
+            merged = mergeProgress(merged, cloudP);
+          }
+        }
+        // Reassign newest file id to syncState since we may have called downloadDriveProgress
+        // which can clear it. Set it to the newest file's id.
+        saveProgressLocalOnly(merged, 'merge-duplicates');
+        syncState.driveFileId = newestFile.id;
+        syncState.driveModifiedTime = newestFile.modifiedTime || null;
+        return uploadDriveProgress(merged).then(function () {
+          // Delete extras after merged upload succeeds
+          var deletePromises = [];
+          for (var j = 1; j < files.length; j++) {
+            deletePromises.push(
+              driveFetch(DRIVE_API_BASE + '/files/' + encodeURIComponent(files[j].id), { method: 'DELETE' })
+                .catch(function () {})
+            );
+          }
+          return Promise.all(deletePromises);
+        });
+      });
+    }
+
+    // ═══════════════════════════ DRIVE UPLOAD / DOWNLOAD ═══════════════════════════
+    function downloadDriveProgress(fileId) {
+      if (!fileId) return Promise.resolve(null);
+
+      return driveFetch(DRIVE_API_BASE + '/files/' + encodeURIComponent(fileId) + '?alt=media', { method: 'GET' })
+        .then(function (r) {
+          if (r.status === 404) {
+            syncState.driveFileId = null;
+            syncState.driveModifiedTime = null;
+            return null;
+          }
+          if (!r.ok) throw new Error('Drive download failed');
+          return r.json();
+        })
+        .catch(function (e) {
+          if (e && e.status === 404) {
+            syncState.driveFileId = null;
+            syncState.driveModifiedTime = null;
+            return null;
+          }
+          throw e;
+        });
+    }
+
+    function makeMultipartBody(metadata, jsonData, boundary) {
+      var body = '';
+      body += '--' + boundary + '\r\n';
+      body += 'Content-Type: application/json; charset=UTF-8\r\n\r\n';
+      body += JSON.stringify(metadata) + '\r\n';
+      body += '--' + boundary + '\r\n';
+      body += 'Content-Type: application/json; charset=UTF-8\r\n\r\n';
+      body += JSON.stringify(jsonData) + '\r\n';
+      body += '--' + boundary + '--';
+      return new Blob([body], { type: 'multipart/related; boundary=' + boundary });
+    }
+
+    function uploadDriveProgress(progress) {
+      var wrapped = wrapProgressForDrive(progress);
+      var boundary = 'factflow_boundary_' + Date.now() + '_' + makeRandomSuffix();
+      var metadata;
+      var url;
+      var method;
+
+      if (syncState.driveFileId) {
+        metadata = { name: DRIVE_FILE_NAME };
+        url = DRIVE_UPLOAD_BASE + '/files/' + encodeURIComponent(syncState.driveFileId) + '?uploadType=multipart&fields=id,modifiedTime';
+        method = 'PATCH';
+      } else {
+        metadata = {
+          name: DRIVE_FILE_NAME,
+          parents: ['appDataFolder'],
+          mimeType: 'application/json'
+        };
+        url = DRIVE_UPLOAD_BASE + '/files?uploadType=multipart&fields=id,modifiedTime';
+        method = 'POST';
+      }
+
+      return driveFetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'multipart/related; boundary=' + boundary
+        },
+        body: makeMultipartBody(metadata, wrapped, boundary)
+      })
+      .then(function (r) {
+        if (r.status === 404) {
+          // File was deleted elsewhere, retry as create
+          syncState.driveFileId = null;
+          return uploadDriveProgress(progress);
+        }
+        if (!r.ok) throw new Error('Drive upload failed');
+        return r.json();
+      })
+      .then(function (data) {
+        if (data.id) syncState.driveFileId = data.id;
+        if (data.modifiedTime) syncState.driveModifiedTime = data.modifiedTime;
+        syncState.lastPushAt = nowMs();
+        return data;
+      });
+    }
+
+    function deleteDriveProgressFile() {
+      var q = "name='" + DRIVE_FILE_NAME.replace(/'/g, "\'") + "' and trashed=false";
+      var url = DRIVE_API_BASE + '/files?spaces=appDataFolder&fields=files(id,name,modifiedTime)&q=' + encodeURIComponent(q);
+      var ids = {};
+
+      if (syncState.driveFileId) ids[syncState.driveFileId] = true;
+
+      return driveFetch(url, { method: 'GET' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var files = data.files || [];
+          for (var i = 0; i < files.length; i += 1) {
+            if (files[i] && files[i].id) ids[files[i].id] = true;
+          }
+
+          var deletePromises = [];
+          for (var id in ids) {
+            if (Object.prototype.hasOwnProperty.call(ids, id)) {
+              deletePromises.push(
+                driveFetch(DRIVE_API_BASE + '/files/' + encodeURIComponent(id), { method: 'DELETE' })
+                  .then(function (r) {
+                    if (r.status !== 204 && r.status !== 404) throw new Error('Drive delete failed');
+                  })
+              );
+            }
+          }
+          return Promise.all(deletePromises);
+        })
+        .then(function () {
+          syncState.driveFileId = null;
+          syncState.driveModifiedTime = null;
+        })
+        .catch(function (e) {
+          if (e && e.status === 404) {
+            syncState.driveFileId = null;
+            syncState.driveModifiedTime = null;
+            return;
+          }
+          throw e;
+        });
+    }
+
+    // ═══════════════════════════ MERGE HELPERS ═══════════════════════════
+    function mergeProgress(localProgress, cloudProgress) {
+      var local = normalizeProgressForSave(cloneJson(localProgress) || blankProgress());
+      var cloud = normalizeProgressForSave(cloneJson(cloudProgress) || blankProgress());
+      var merged = normalizeProgressForSave(cloneJson(local) || blankProgress());
+
+      merged.currentTable = Math.max(Number(local.currentTable) || STARTING_TABLE, Number(cloud.currentTable) || STARTING_TABLE);
+      if (merged.currentTable > MAX_TABLE) merged.currentTable = MAX_TABLE;
+      if (merged.currentTable < STARTING_TABLE) merged.currentTable = STARTING_TABLE;
+
+      merged.factStats = mergeFactStats(local.factStats || {}, cloud.factStats || {});
+      merged.sessionHistory = mergeSessionHistory(local.sessionHistory || [], cloud.sessionHistory || []);
+
+      merged.sessionsCompleted = merged.sessionHistory.length;
+
+      merged.allTimeBestStreak = Math.max(Number(local.allTimeBestStreak) || 0, Number(cloud.allTimeBestStreak) || 0);
+      merged.allTimeBestFpm = Math.max(Number(local.allTimeBestFpm) || 0, Number(cloud.allTimeBestFpm) || 0);
+
+      merged.dailyQuizCounts = rebuildDailyQuizCounts(merged.sessionHistory, local.dailyQuizCounts, cloud.dailyQuizCounts);
+
+      // Settings are intentionally device-local.
+      merged.settings = copySettings(state.settings);
+
+      merged.updatedAt = nowIso();
+      merged.updatedAtMs = nowMs();
+
+      return merged;
+    }
+
+    function mergeFactStats(aStats, bStats) {
+      var out = {};
+      var key;
+      for (key in aStats) if (Object.prototype.hasOwnProperty.call(aStats, key)) out[key] = mergeOneFactStat(aStats[key], null);
+      for (key in bStats) if (Object.prototype.hasOwnProperty.call(bStats, key)) out[key] = mergeOneFactStat(out[key], bStats[key]);
+      return out;
+    }
+
+    function mergeOneFactStat(a, b) {
+      a = a || {};
+      b = b || {};
+      var out = {};
+
+      // Conservative ceiling merge. This avoids double-counting repeated syncs.
+      // A future event-level attempt log can replace this with true delta merging.
+      out.shown = Math.max(Number(a.shown) || 0, Number(b.shown) || 0);
+      out.correct = Math.max(Number(a.correct) || 0, Number(b.correct) || 0);
+      out.incorrect = Math.max(Number(a.incorrect) || 0, Number(b.incorrect) || 0);
+      out.timeouts = Math.max(Number(a.timeouts) || 0, Number(b.timeouts) || 0);
+
+      var aTime = Number(a.lastSeenTs) || (a.lastSeen ? new Date(a.lastSeen).getTime() : 0);
+      var bTime = Number(b.lastSeenTs) || (b.lastSeen ? new Date(b.lastSeen).getTime() : 0);
+      var newest = bTime > aTime ? b : a;
+
+      out.lastSeen = newest.lastSeen || null;
+      out.lastSeenTs = Number(newest.lastSeenTs) || (newest.lastSeen ? new Date(newest.lastSeen).getTime() : 0);
+      out.lastResponseMs = Number(newest.lastResponseMs) || 0;
+      out.avgMs = Math.max(Number(a.avgMs) || 0, Number(b.avgMs) || 0);
+      out.recent = mergeRecentAttempts(a.recent || [], b.recent || []);
+      out.mastery = Math.max(Number(a.mastery) || 0, Number(b.mastery) || 0);
+      out.fastStreak = Math.max(Number(a.fastStreak) || 0, Number(b.fastStreak) || 0);
+      out.slowOrWrongCount = Math.max(Number(a.slowOrWrongCount) || 0, Number(b.slowOrWrongCount) || 0);
+      out.cooldownUntil = Math.max(Number(a.cooldownUntil) || 0, Number(b.cooldownUntil) || 0);
+
+      return out;
+    }
+
+    function mergeRecentAttempts(aRecent, bRecent) {
+      var map = {};
+      var list = [];
+
+      function addAttempt(att) {
+        if (!att) return;
+        var copy = cloneJson(att);
+        if (!copy.attemptId) {
+          copy.attemptId = (copy.at || '') + '-' + (copy.isCorrect ? 'c' : 'w') + '-' + (copy.responseMs || '0') + (copy.timeout ? '-to' : '');
+        }
+        if (!map[copy.attemptId]) {
+          map[copy.attemptId] = copy;
+          list.push(copy);
+        }
+      }
+
+      var i;
+      for (i = 0; i < aRecent.length; i += 1) addAttempt(aRecent[i]);
+      for (i = 0; i < bRecent.length; i += 1) addAttempt(bRecent[i]);
+
+      list.sort(function (x, y) {
+        return (x.at || 0) - (y.at || 0);
+      });
+
+      while (list.length > 12) list.shift();
+
+      return list;
+    }
+
+    function ensureSessionId(session) {
+      if (session.sessionId) return session.sessionId;
+      var stamp = session.completedAt || session.date || session.at || session.day || nowIso();
+      var score = typeof session.score !== 'undefined' ? session.score : '';
+      var fpm = typeof session.fpm !== 'undefined' ? session.fpm : '';
+      return 'legacy-' + stamp + '-' + score + '-' + fpm;
+    }
+
+    function mergeSessionHistory(aHistory, bHistory) {
+      var map = {};
+      var list = [];
+
+      function addSession(s) {
+        if (!s) return;
+        var copy = cloneJson(s);
+        copy.sessionId = ensureSessionId(copy);
+        if (!map[copy.sessionId]) {
+          map[copy.sessionId] = copy;
+          list.push(copy);
+        } else {
+          map[copy.sessionId] = mergeOneSession(map[copy.sessionId], copy);
+        }
+      }
+
+      var i;
+      for (i = 0; i < aHistory.length; i += 1) addSession(aHistory[i]);
+      for (i = 0; i < bHistory.length; i += 1) addSession(bHistory[i]);
+
+      list = [];
+      for (var id in map) {
+        if (Object.prototype.hasOwnProperty.call(map, id)) list.push(map[id]);
+      }
+
+      list.sort(function (x, y) {
+        var xt = new Date(x.completedAt || x.date || x.at || 0).getTime() || 0;
+        var yt = new Date(y.completedAt || y.date || y.at || 0).getTime() || 0;
+        return xt - yt;
+      });
+
+      for (i = 0; i < list.length; i += 1) {
+        list[i].session = i + 1;
+      }
+
+      return list;
+    }
+
+    function mergeOneSession(a, b) {
+      var at = new Date(a.completedAt || a.date || a.at || 0).getTime() || 0;
+      var bt = new Date(b.completedAt || b.date || b.at || 0).getTime() || 0;
+      return bt >= at ? b : a;
+    }
+
+    function rebuildDailyQuizCounts(history, localCounts, cloudCounts) {
+      var counts = {};
+      var i;
+      for (i = 0; i < history.length; i += 1) {
+        var s = history[i];
+        var d = getSessionDateKey(s);
+        if (d) counts[d] = (counts[d] || 0) + 1;
+      }
+
+      mergeDailyCountFallback(counts, localCounts || {});
+      mergeDailyCountFallback(counts, cloudCounts || {});
+      return counts;
+    }
+
+    function mergeDailyCountFallback(target, source) {
+      var key;
+      for (key in source) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+          target[key] = Math.max(Number(target[key]) || 0, Number(source[key]) || 0);
+        }
+      }
+    }
+
+    function twoDigit(n) {
+      n = String(n);
+      return n.length < 2 ? '0' + n : n;
+    }
+
+    function getSessionDateKey(s) {
+      var raw = s.completedAt || s.date || s.at || s.day || '';
+      if (!raw) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+      var d = new Date(raw);
+      if (isNaN(d.getTime())) return '';
+      return d.getFullYear() + '-' + twoDigit(d.getMonth() + 1) + '-' + twoDigit(d.getDate());
+    }
+
+    function stableStringify(value) {
+      if (value === null || typeof value !== 'object') return JSON.stringify(value);
+      if (Array.isArray(value)) {
+        var parts = [];
+        for (var i = 0; i < value.length; i += 1) parts.push(stableStringify(value[i]));
+        return '[' + parts.join(',') + ']';
+      }
+      var keys = Object.keys(value).sort();
+      var out = [];
+      for (var j = 0; j < keys.length; j += 1) {
+        var k = keys[j];
+        if (k === 'updatedAt' || k === 'updatedAtMs' || k === 'settings' || k === 'syncMeta') continue;
+        out.push(JSON.stringify(k) + ':' + stableStringify(value[k]));
+      }
+      return '{' + out.join(',') + '}';
+    }
+
+    function progressFingerprint(progress) {
+      var copy = normalizeProgressForSave(cloneJson(progress) || blankProgress());
+      delete copy.updatedAt;
+      delete copy.updatedAtMs;
+      delete copy.settings;
+      delete copy.syncMeta;
+      return stableStringify(copy);
+    }
+
+    function markLocalCounterSynced(counterSnapshot) {
+      counterSnapshot = Number(counterSnapshot) || 0;
+      if (counterSnapshot > syncState.lastSyncedLocalSaveCounter) {
+        syncState.lastSyncedLocalSaveCounter = counterSnapshot;
+      }
+    }
+
+    // ═══════════════════════════ SYNC ORCHESTRATION ═══════════════════════════
+    function syncNow(reason) {
+      if (!syncState.signedIn) {
+        setSyncStatus('local', 'Saved on this device');
+        return Promise.resolve(false);
+      }
+      if (!navigator.onLine) {
+        setSyncStatus('offline', 'Offline - will sync later');
+        return Promise.resolve(false);
+      }
+      if (syncState.isSyncing) {
+        syncState.pendingPush = true;
+        return Promise.resolve(false);
+      }
+
+      syncState.isSyncing = true;
+      setSyncStatus('syncing', 'Syncing...');
+
+      var hadPendingPushAtStart = syncState.pendingPush;
+      var counterSnapshot = syncState.localSaveCounter;
+
+      return findDriveFile()
+        .then(function (fileId) {
+          if (!fileId) {
+            return pushLocalToDrive('create-file', counterSnapshot).then(function () {
+              return { uploaded: true };
+            });
+          }
+          return downloadDriveProgress(fileId).then(function (driveData) {
+            var cloudProgress = unwrapDriveProgress(driveData);
+            var localProgress = loadProgress();
+            var localFingerprint = progressFingerprint(localProgress);
+            var cloudFingerprint = cloudProgress ? progressFingerprint(cloudProgress) : '';
+            var merged = mergeProgress(localProgress, cloudProgress || blankProgress());
+            var mergedFingerprint = progressFingerprint(merged);
+            var localNeedsUpdate = mergedFingerprint !== localFingerprint;
+            var cloudNeedsUpdate = !cloudProgress || mergedFingerprint !== cloudFingerprint || hadPendingPushAtStart || counterSnapshot > syncState.lastSyncedLocalSaveCounter;
+
+            if (localNeedsUpdate) {
+              saveProgressLocalOnly(merged, 'cloud-merge');
+              if (!round) refreshProgressUi();
+            }
+
+            if (cloudNeedsUpdate) {
+              return uploadDriveProgress(merged).then(function () {
+                markLocalCounterSynced(counterSnapshot);
+                return { uploaded: true };
+              });
+            }
+
+            return { uploaded: false };
+          });
+        })
+        .then(function (result) {
+          var localChangedDuringSync = syncState.localSaveCounter > counterSnapshot;
+          var pendingStillNeedsPush = syncState.pendingPush && (!result || !result.uploaded);
+          syncState.isSyncing = false;
+          syncState.pendingPush = false;
+          syncState.lastPullAt = nowMs();
+          setSyncStatus('synced', 'Synced');
+
+          if (localChangedDuringSync || pendingStillNeedsPush) {
+            queueDrivePush('pending-after-sync', true);
+          }
+          return true;
+        })
+        .catch(function (e) {
+          syncState.isSyncing = false;
+          syncState.lastError = e;
+          if (isAuthError(e) || e.message === 'TOKEN_EXPIRED') {
+            setSyncStatus('error', 'Sign in again to sync');
+          } else if (!navigator.onLine) {
+            setSyncStatus('offline', 'Offline - will sync later');
+          } else {
+            setSyncStatus('error', 'Sync needs attention');
+          }
+          return false;
+        });
+    }
+
+    function pushLocalToDrive(reason, counterSnapshot) {
+      if (!syncState.signedIn) return Promise.resolve(false);
+      if (!navigator.onLine) {
+        setSyncStatus('offline', 'Offline - will sync later');
+        return Promise.resolve(false);
+      }
+      if (typeof counterSnapshot !== 'number') counterSnapshot = syncState.localSaveCounter;
+      var progress = loadProgress();
+      return uploadDriveProgress(progress).then(function () {
+        markLocalCounterSynced(counterSnapshot);
+        setSyncStatus('synced', 'Synced');
+        if (syncState.localSaveCounter > counterSnapshot && !syncState.saveTimer && !syncState.isSyncing) {
+          queueDrivePush('pending-after-push', true);
+        }
+        return true;
+      });
+    }
+
+    function queueDrivePush(reason, immediate) {
+      if (!syncState.signedIn) return;
+      if (!navigator.onLine) {
+        syncState.pendingPush = true;
+        setSyncStatus('offline', 'Offline - will sync later');
+        return;
+      }
+
+      syncState.pendingPush = true;
+
+      if (syncState.saveTimer) {
+        clearTimeout(syncState.saveTimer);
+        syncState.saveTimer = null;
+      }
+
+      syncState.saveTimer = setTimeout(function () {
+        syncState.saveTimer = null;
+        if (!syncState.signedIn) return;
+        if (syncState.isSyncing) {
+          syncState.pendingPush = true;
+          return;
+        }
+        syncState.pendingPush = false;
+        var counterSnapshot = syncState.localSaveCounter;
+        pushLocalToDrive(reason || 'queued-push', counterSnapshot).catch(function (e) {
+          syncState.pendingPush = true;
+          syncState.lastError = e;
+          if (isAuthError(e) || e.message === 'TOKEN_EXPIRED') {
+            setSyncStatus('error', 'Sign in again to sync');
+          } else {
+            setSyncStatus('error', 'Sync needs attention');
+          }
+        });
+      }, immediate ? 0 : SYNC_SAVE_DEBOUNCE_MS);
+    }
+
+    // ═══════════════════════════ SYNC POLLING ═══════════════════════════
+    function startSyncPolling() {
+      stopSyncPolling();
+      syncState.pollTimer = setInterval(function () {
+        if (!syncState.signedIn) return;
+        if (!navigator.onLine) {
+          setSyncStatus('offline', 'Offline - will sync later');
+          return;
+        }
+        if (round) return;
+        syncNow('poll');
+      }, SYNC_PULL_INTERVAL_MS);
+    }
+
+    function stopSyncPolling() {
+      if (syncState.pollTimer) {
+        clearInterval(syncState.pollTimer);
+        syncState.pollTimer = null;
+      }
+    }
+
+    function bindSyncLifecycleEvents() {
+      window.addEventListener('online', function () {
+        if (syncState.signedIn) {
+          setSyncStatus('syncing', 'Back online - syncing...');
+          syncNow('online');
+        }
+      });
+
+      window.addEventListener('offline', function () {
+        if (syncState.signedIn) setSyncStatus('offline', 'Offline - will sync later');
+      });
+
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible' && syncState.signedIn && !round) {
+          syncNow('visible');
+        }
+      });
     }
 
     function getFactStats(table, second) {
@@ -1493,6 +2489,21 @@
 
     // ═══════════════════════════ ROUND MANAGEMENT ═══════════════════════════
     function startRound() {
+      if (syncState.signedIn && navigator.onLine && nowMs() - syncState.lastPullAt > SYNC_BEFORE_ROUND_MAX_AGE_MS) {
+        syncNow('before-round').then(function () {
+          startRoundNow();
+        }).catch(function (e) {
+          if (isAuthError(e) || e.message === 'TOKEN_EXPIRED') {
+            setSyncStatus('error', 'Sign in again to sync');
+          }
+          startRoundNow();
+        });
+        return;
+      }
+      startRoundNow();
+    }
+
+    function startRoundNow() {
       if (!getUserId()) return;
       stopRound(false);
       var progress = loadProgress();
@@ -1737,6 +2748,10 @@
       renderProgressGrid();
       renderProgressGraph();
       updatePracticeHeader();
+
+      if (syncState.signedIn) {
+        queueDrivePush('round-complete', true);
+      }
     }
 
 
@@ -1854,7 +2869,10 @@
       if (fpm > (progress.allTimeBestFpm || 0)) progress.allTimeBestFpm = fpm;
       var masteryScore = calculateOverallMasteryScore(levelsPassed, inProgressCount, accuracy, fpm);
       progress.sessionHistory.push({
+        sessionId: (syncState.deviceId || getDeviceId()) + '-' + Date.now() + '-' + makeRandomSuffix(),
         session: progress.sessionsCompleted,
+        date: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
         levelsPassed: levelsPassed,
         inProgressCount: inProgressCount,
         totalFacts: MASTERY_TOTAL_FACTS,
@@ -1866,7 +2884,7 @@
         at: new Date().toISOString()
       });
       if (progress.sessionHistory.length > 200) progress.sessionHistory.shift();
-      saveProgressToStorage(progress);
+      saveProgressLocalOnly(progress, 'record-session');
       return true;
     }
 
@@ -2237,14 +3255,45 @@
     }
 
     // ═══════════════════════════ HELPERS ═══════════════════════════
-    function resetProgress() {
-      var uid = getUserId();
-      if (!uid) return;
-      localStorage.removeItem(STORAGE_KEY + uid);
-      updateTodaysQuizDisplay(defaultProgress());
+    function resetProgress(options) {
+      options = options || {};
+      var deleteCloud = options.deleteCloud === true;
+
       stopRound(false);
-      renderAuthUI();
-      setStatus(el.roundStatus, 'Progress reset. Ready to start fresh.', 'warn');
+
+      var uid = getUserId();
+      if (uid) {
+        try {
+          localStorage.removeItem(STORAGE_KEY + uid);
+        } catch (e) {}
+      }
+
+      graphShowAllResults = false;
+      refreshProgressUi();
+
+      if (!deleteCloud && syncState.signedIn) {
+        signOutOfSync();
+        setSyncStatus('local', 'Local progress reset; Google sync signed out');
+        return;
+      }
+
+      setSyncStatus(syncState.signedIn ? 'synced' : 'local', syncState.signedIn ? 'Local progress reset' : 'Saved on this device');
+
+      if (deleteCloud && syncState.signedIn) {
+        if (syncState.saveTimer) {
+          clearTimeout(syncState.saveTimer);
+          syncState.saveTimer = null;
+        }
+        syncState.pendingPush = false;
+        deleteDriveProgressFile()
+          .then(function () {
+            setSyncStatus('synced', 'Device and cloud progress reset');
+          })
+          .catch(function (e) {
+            syncState.lastError = e;
+            setSyncStatus('error', 'Cloud reset needs attention');
+          });
+      }
     }
 
     function getRoundFpm(r) {
@@ -2546,10 +3595,16 @@
           document.getElementById('resetConfirm').style.display = '';
         });
       }
-      if (el.settingsConfirmResetBtn) {
-        el.settingsConfirmResetBtn.addEventListener('click', function () {
+      if (el.settingsConfirmResetLocalBtn) {
+        el.settingsConfirmResetLocalBtn.addEventListener('click', function () {
           closeSettingsMenu();
-          resetProgress();
+          resetProgress({ deleteCloud: false });
+        });
+      }
+      if (el.settingsConfirmResetCloudBtn) {
+        el.settingsConfirmResetCloudBtn.addEventListener('click', function () {
+          closeSettingsMenu();
+          resetProgress({ deleteCloud: true });
         });
       }
       if (el.settingsCancelResetBtn) {
@@ -2557,6 +3612,24 @@
           e.stopPropagation();
           document.getElementById('resetNormal').style.display = '';
           document.getElementById('resetConfirm').style.display = 'none';
+        });
+      }
+      if (el.googleSignInBtn) {
+        el.googleSignInBtn.addEventListener('click', requestGoogleSignIn);
+      }
+      if (el.settingsSyncNowBtn) {
+        el.settingsSyncNowBtn.addEventListener('click', function () {
+          if (!syncState.signedIn) {
+            requestGoogleSignIn();
+            return;
+          }
+          syncNow('manual');
+        });
+      }
+      if (el.settingsSignOutBtn) {
+        el.settingsSignOutBtn.addEventListener('click', function () {
+          signOutOfSync();
+          closeSettingsMenu();
         });
       }
       el.startBtn.addEventListener('click', startRound);
@@ -2659,6 +3732,10 @@
       bindEvents();
       bindGraphInteractions();
       renderAuthUI();
+      syncState.deviceId = getDeviceId();
+      initGoogleAuth(0);
+      bindSyncLifecycleEvents();
+      setSyncStatus('local', 'Saved on this device');
     }
 
     init();
@@ -2666,12 +3743,11 @@
     // Cross-tab: when another tab modifies localStorage, refresh the UI.
     window.addEventListener('storage', function (e) {
       var ourKey = STORAGE_KEY + getUserId();
-      if (e.key === ourKey && e.newValue) {
-        renderProgressGrid();
-        renderProgressGraph();
-        updatePracticeHeader();
-        updateTodaysQuizDisplay();
-        updateBestSpeedDisplay();
+      if (e.key === ourKey) {
+        if (!round) refreshProgressUi();
+        if (e.newValue && syncState.signedIn && !round) {
+          queueDrivePush('cross-tab-local-change', false);
+        }
       }
     });
   })();
