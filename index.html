@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactFlow v11</title>
+  <title>FactFlow</title>
   <!-- v11: Local-storage-only version. Moves mastery score help into an information panel to keep the graph area cleaner. -->
 
 
@@ -810,6 +810,10 @@
                 <span class="settings-title">Haptic feedback</span>
                 <span class="settings-subtitle" id="hapticsStatusText">On</span>
               </span>
+              <button type="button" id="hapticsTestBtn" title="Test vibration"
+                style="padding:0.28rem 0.6rem;font-size:0.72rem;border-radius:var(--radius-full);background:var(--color-surface-offset);border:1px solid color-mix(in oklab,var(--color-text) 12%,transparent);color:var(--color-text-muted);cursor:pointer;white-space:nowrap;line-height:1.4;margin-left:auto">
+                Test
+              </button>
               <span class="settings-check" aria-hidden="true">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
               </span>
@@ -1063,6 +1067,7 @@
       el.themeSystemBtn = document.getElementById('themeSystemBtn');
       el.hapticsToggleBtn = document.getElementById('hapticsToggleBtn');
       el.hapticsStatusText = document.getElementById('hapticsStatusText');
+      el.hapticsTestBtn    = document.getElementById('hapticsTestBtn');
       el.scoreInfoOverlay = document.getElementById('scoreInfoOverlay');
       el.scoreInfoCloseBtn = document.getElementById('scoreInfoCloseBtn');
       el.scoreInfoDoneBtn = document.getElementById('scoreInfoDoneBtn');
@@ -2303,9 +2308,7 @@
       if (!getHapticsEnabled()) return false;
       if (!supportsHaptics()) return false;
       var normalized = Array.isArray(pattern) ? pattern : [pattern];
-      try {
-        return !!navigator.vibrate(normalized);
-      } catch (e) {}
+      try { return !!navigator.vibrate(normalized); } catch (e) {}
       return false;
     }
 
@@ -2400,6 +2403,15 @@
       }
       if (el.themeSystemBtn) {
         el.themeSystemBtn.addEventListener('click', function () { setThemePref('system'); closeSettingsMenu(); });
+      }
+      if (el.hapticsTestBtn) {
+        el.hapticsTestBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var ok = buzz([30, 20, 30, 20, 30]);
+          var btn = el.hapticsTestBtn;
+          btn.textContent = ok ? 'Felt it?' : 'Not supported';
+          setTimeout(function () { btn.textContent = 'Test'; }, 2500);
+        });
       }
       if (el.hapticsToggleBtn) {
         el.hapticsToggleBtn.addEventListener('click', function (e) {
