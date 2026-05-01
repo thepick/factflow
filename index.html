@@ -1000,7 +1000,7 @@
     var GRAPH_DEFAULT_VISIBLE_RESULTS = 10;
 
     // Mobile haptic feedback. Default is on. Students can turn it off in Settings.
-    // Only works on devices and browsers that support navigator.vibrate.
+    // Works when the browser exposes navigator.vibrate and the device allows vibration.
     var HAPTICS_DEFAULT_ON = true;
 
     // Teacher settings are edited here in the code instead of shown in the student UI.
@@ -2255,8 +2255,27 @@
 
     // ═══════════════════════════ MOBILE HELPERS ═══════════════════════════
     function isProbablyMobile() {
-      if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
-      return 'ontouchstart' in window;
+      try {
+        if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
+          return navigator.userAgentData.mobile;
+        }
+      } catch (e) {}
+      try {
+        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
+      } catch (e) {}
+      try {
+        if (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) return true;
+      } catch (e) {}
+      return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+    }
+
+    function supportsHaptics() {
+      try {
+        if (!('vibrate' in navigator) || typeof navigator.vibrate !== 'function') return false;
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+        return true;
+      } catch (e) {}
+      return false;
     }
 
     function getHapticsEnabled() {
@@ -2281,10 +2300,13 @@
     }
 
     function buzz(pattern) {
-      if (!isProbablyMobile()) return;
-      if (!getHapticsEnabled()) return;
-      if (!navigator.vibrate) return;
-      navigator.vibrate(pattern);
+      if (!getHapticsEnabled()) return false;
+      if (!supportsHaptics()) return false;
+      var normalized = Array.isArray(pattern) ? pattern : [pattern];
+      try {
+        return !!navigator.vibrate(normalized);
+      } catch (e) {}
+      return false;
     }
 
     function updateMobileMode() {
