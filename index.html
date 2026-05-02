@@ -1646,7 +1646,19 @@
           setSyncStatus('syncing', 'Restoring Google sync...');
           onGoogleSignedIn();
         } else {
-          setSyncStatus('local', 'Sign in to sync');
+          // Token not in sessionStorage (Edge cleared it, new tab, sleeping tab, etc.)
+          // Try a silent refresh first - no popup, no user interaction required.
+          setSyncStatus('syncing', 'Reconnecting to Google...');
+          requestGoogleTokenRefresh('')
+            .then(function () {
+              onGoogleSignedIn();
+            })
+            .catch(function (e) {
+              // Silent refresh failed (token truly expired, access revoked, etc.)
+              // Fall back gracefully - just ask the user to sign in again.
+              syncState.lastError = e;
+              setSyncStatus('local', 'Sign in to sync');
+            });
         }
       }
     }
