@@ -52,6 +52,20 @@
     .logo-mark { width: 100%; height: 100%; display: block; }
     .header h1 { font-size: 1.15rem; }
     .header-actions { display: flex; gap: var(--space-2); align-items: center; }
+    .header-google-auth { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+    .header-google-auth .btn-google-signin { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 16px; border-radius: var(--radius-md); background: #ffffff; color: #3c4043; border: 1px solid #dadce0; font-size: var(--text-sm); font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.14); }
+    .header-google-auth .btn-google-signin:hover { background: #f8f9fa; }
+    .header-google-auth .header-user-info { display: none; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 8px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.34); border-radius: var(--radius-lg); }
+    .header-google-auth .auth-status { color: rgba(255,255,255,0.9); font-size: 13px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .header-google-auth .auth-status strong { color: #ffffff; }
+    .header-google-auth .drive-sync-status { color: rgba(255,255,255,0.85); font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .drive-sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; display: inline-block; flex: 0 0 auto; }
+    .drive-sync-dot.synced { background: #10b981; }
+    .drive-sync-dot.syncing { background: #f59e0b; animation: pulse 1.2s infinite; }
+    .drive-sync-dot.error { background: #ef4444; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
+    .header-google-auth .btn-google-signout { min-height: 36px; padding: 6px 14px; border-radius: var(--radius-md); color: #ffffff; border: 1px solid rgba(255,255,255,0.45); background: rgba(255,255,255,0.1); font-size: var(--text-xs); font-weight: 700; }
+    .header-google-auth .btn-google-signout:hover { background: rgba(255,255,255,0.22); }
     .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border-radius: var(--radius-md); background: rgba(255,255,255,0.12); color: var(--color-text-inverse); border: 1px solid rgba(255,255,255,0.16); font-size: 1rem; }
     .icon-btn:hover, .icon-btn.active { background: rgba(255,255,255,0.22); }
     .google-logo { width: 23px; height: 23px; display: block; }
@@ -482,7 +496,12 @@
       .logo { width: 32px; height: 32px; border-radius: var(--radius-full); }
       .header h1 { font-size: 1rem; }
       .header-actions { flex-wrap: nowrap; justify-content: flex-end; gap: 0.4rem; }
-      .user-info.local-badge { display: none; }
+      .header-google-auth { flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
+      .header-google-auth .btn-google-signin { padding: 8px 10px; font-size: 0.78rem; }
+      .header-google-auth .header-user-info { gap: 7px; padding: 5px 7px; flex-wrap: nowrap; min-width: 0; }
+      .header-google-auth .auth-status { max-width: 108px; font-size: 12px; }
+      .header-google-auth .drive-sync-status { font-size: 11px; }
+      .header-google-auth .btn-google-signout { padding: 5px 8px; font-size: 0.68rem; }
       .icon-btn { width: 36px; height: 36px; }
       .settings-dropdown { right: 0; min-width: min(92vw, 300px); }
       .panel { padding: 0.65rem; border-radius: var(--radius-lg); }
@@ -749,44 +768,15 @@
     background: var(--color-primary-highlight);
     color: var(--color-primary);
   }
-  .sync-badge-local {
-    background: rgba(255,255,255,0.12);
-    border-color: rgba(255,255,255,0.18);
-    color: var(--color-text-inverse);
-    padding: 0.35rem 0.65rem;
-    gap: 0.45rem;
-    font-size: var(--text-xs);
-    font-weight: 700;
-    white-space: nowrap;
-  }
-  .sync-badge-local.syncing {
-    background: rgba(255,255,255,0.22);
-  }
-  .sync-badge-local.synced {
-    background: rgba(67,122,34,0.26);
-  }
-  .sync-badge-local.offline,
-  .sync-badge-local.error {
-    background: rgba(161,44,123,0.22);
-  }
-  @media (max-width: 500px) {
-    #syncBadge.sync-badge-local {
-      display: flex;
-      flex: 0 1 auto;
-      min-width: 0;
+  @media (max-width: 420px) {
+    .header-google-auth .auth-status {
+      max-width: 88px;
     }
-    .sync-badge-local {
-      max-width: 142px;
+    .header-google-auth .drive-sync-status span:last-child {
+      max-width: 68px;
       overflow: hidden;
       text-overflow: ellipsis;
-      padding: 0.35rem 0.5rem;
-      font-size: 0.66rem;
-      justify-content: center;
-    }
-  }
-  @media (max-width: 380px) {
-    .sync-badge-local {
-      max-width: 112px;
+      white-space: nowrap;
     }
   }
 </style>
@@ -825,17 +815,28 @@
         <h1>FactFlow</h1>
       </div>
       <div class="header-actions">
-        <div id="syncBadge" class="user-info local-badge sync-badge-local" title="Sync status">
-          <span id="syncBadgeText">Saved here</span>
+        <div class="header-google-auth" id="headerGoogleAuth">
+          <div id="headerGoogleSignInBtn">
+            <button type="button" class="btn-google-signin" id="googleSignInBtn" aria-label="Sign in with Google" title="Sign in with Google Drive sync">
+              <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"></path>
+                <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"></path>
+                <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"></path>
+                <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"></path>
+              </svg>
+              Sign in with Google
+            </button>
+          </div>
+          <div id="headerGoogleUserInfo" class="header-user-info">
+            <img id="headerGoogleUserAvatar" src="" width="32" height="32" style="border-radius:50%; display:none;" onerror="this.style.display='none'" alt="">
+            <div class="auth-status">Signed in as <strong id="headerGoogleUserName"></strong></div>
+            <div class="drive-sync-status">
+              <span class="drive-sync-dot" id="headerDriveSyncDot"></span>
+              <span id="headerDriveSyncText">Not synced</span>
+            </div>
+            <button type="button" class="btn-google-signout" id="headerGoogleSignOutBtn">Sign Out</button>
+          </div>
         </div>
-        <button type="button" class="icon-btn" id="googleSignInBtn" aria-label="Sign in with Google" title="Sign in with Google Drive sync">
-          <svg class="google-logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"></path>
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"></path>
-            <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"></path>
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"></path>
-          </svg>
-        </button>
 
         <div class="settings-menu-wrap" id="settingsMenuWrap">
           <button type="button" class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings">
@@ -1119,7 +1120,7 @@
 
     // Google Drive sync config.
     var GOOGLE_CLIENT_ID = '220590044784-6bohsjumu2r67ds92lhmfdubhh3qen5i.apps.googleusercontent.com';
-    var GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+    var GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email';
     var DRIVE_FILE_NAME = 'factflow_data.json';
     var DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
     var DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
@@ -1134,6 +1135,7 @@
     var LOCAL_DEVICE_ID_KEY = 'factflow-device-id';
     var SYNC_ENABLED_KEY = 'factflow-sync-enabled-before';
     var SYNC_TOKEN_SESSION_KEY = 'factflow-google-token-session';
+    var GOOGLE_USER_CACHE_KEY = 'factflow-google-user-cache';
 
     // ═══════════════════════════ CONFIG ═══════════════════════════
     var STORAGE_KEY         = 'factflow-progress-';  // localStorage key prefix
@@ -1213,6 +1215,7 @@
       lastPullAt: 0,
       lastPushAt: 0,
       lastError: null,
+      googleUser: null,
       deviceId: null,
       localSaveCounter: 0,
       lastSyncedLocalSaveCounter: 0
@@ -1272,8 +1275,14 @@
       el.timeLeftStat = document.getElementById('timeLeftStat');
       el.mobileCornerTimer = document.getElementById('mobileCornerTimer');
       el.keyButtons = Array.from(document.querySelectorAll('.key-btn'));
-      el.syncBadge = document.getElementById('syncBadge');
-      el.syncBadgeText = document.getElementById('syncBadgeText');
+      el.headerGoogleAuth = document.getElementById('headerGoogleAuth');
+      el.headerGoogleSignInWrap = document.getElementById('headerGoogleSignInBtn');
+      el.headerGoogleUserInfo = document.getElementById('headerGoogleUserInfo');
+      el.headerGoogleUserName = document.getElementById('headerGoogleUserName');
+      el.headerGoogleUserAvatar = document.getElementById('headerGoogleUserAvatar');
+      el.headerDriveSyncDot = document.getElementById('headerDriveSyncDot');
+      el.headerDriveSyncText = document.getElementById('headerDriveSyncText');
+      el.headerGoogleSignOutBtn = document.getElementById('headerGoogleSignOutBtn');
       el.googleSignInBtn = document.getElementById('googleSignInBtn');
       el.settingsSyncNowBtn = document.getElementById('settingsSyncNowBtn');
       el.settingsSyncStatusText = document.getElementById('settingsSyncStatusText');
@@ -1503,34 +1512,90 @@
     }
 
     // ═══════════════════════════ SYNC STATUS ═══════════════════════════
-    function getSyncBadgeText(status, text) {
-      if (status === 'local') return 'Saved here';
+    function getCachedGoogleUser() {
+      try {
+        var raw = localStorage.getItem(GOOGLE_USER_CACHE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function cacheGoogleUser(info) {
+      if (!info) return;
+      try {
+        localStorage.setItem(GOOGLE_USER_CACHE_KEY, JSON.stringify(info));
+      } catch (e) {}
+    }
+
+    function clearCachedGoogleUser() {
+      try {
+        localStorage.removeItem(GOOGLE_USER_CACHE_KEY);
+      } catch (e) {}
+    }
+
+    function setGoogleAuthVisibility(isSignedIn) {
+      if (el.headerGoogleSignInWrap) el.headerGoogleSignInWrap.style.display = isSignedIn ? 'none' : '';
+      if (el.headerGoogleUserInfo) el.headerGoogleUserInfo.style.display = isSignedIn ? 'flex' : 'none';
+    }
+
+    function setGoogleUserDisplay(info) {
+      var displayName = (info && (info.name || info.email)) ? (info.name || info.email) : 'Connected';
+      if (el.headerGoogleUserName) el.headerGoogleUserName.textContent = displayName;
+      if (el.headerGoogleUserAvatar) {
+        if (info && info.picture) {
+          el.headerGoogleUserAvatar.src = info.picture;
+          el.headerGoogleUserAvatar.style.display = '';
+        } else {
+          el.headerGoogleUserAvatar.style.display = 'none';
+        }
+      }
+    }
+
+    function refreshGoogleAuthHeader() {
+      setGoogleAuthVisibility(syncState.signedIn);
+      if (syncState.signedIn) {
+        setGoogleUserDisplay(syncState.googleUser || getCachedGoogleUser() || { name: 'Connected' });
+      }
+    }
+
+    function getDriveSyncText(status, text) {
+      if (!syncState.signedIn) return 'Not synced';
       if (status === 'syncing') return 'Syncing...';
-      if (status === 'synced') return 'Synced';
+      if (status === 'synced') return text && text !== 'Synced' ? text : 'Synced';
       if (status === 'offline') return 'Offline';
       if (status === 'error') return 'Sync error';
-      return text || 'Saved here';
+      if (status === 'local') return 'Saved locally';
+      return text || 'Not synced';
+    }
+
+    function setDriveSyncDot(status) {
+      if (!el.headerDriveSyncDot) return;
+      var cls = 'drive-sync-dot';
+      if (syncState.signedIn) {
+        if (status === 'synced') cls += ' synced';
+        else if (status === 'syncing') cls += ' syncing';
+        else if (status === 'offline' || status === 'error') cls += ' error';
+      }
+      el.headerDriveSyncDot.className = cls;
     }
 
     function setSyncStatus(status, message) {
       var text = message || '';
       if (!text) {
-        if (status === 'local') text = 'Saved on this device';
+        if (status === 'local') text = syncState.signedIn ? 'Saved locally' : 'Not synced';
         else if (status === 'syncing') text = 'Syncing...';
         else if (status === 'synced') text = 'Synced';
         else if (status === 'offline') text = 'Offline - will sync later';
         else if (status === 'error') text = 'Sync needs attention';
-        else text = 'Saved on this device';
+        else text = syncState.signedIn ? 'Saved locally' : 'Not synced';
       }
 
-      var badgeText = getSyncBadgeText(status, text);
+      refreshGoogleAuthHeader();
+      setDriveSyncDot(status);
 
-      if (el.syncBadge) {
-        el.syncBadge.classList.remove('syncing', 'synced', 'offline', 'error');
-        if (status) el.syncBadge.classList.add(status);
-        el.syncBadge.title = text;
-      }
-      if (el.syncBadgeText) el.syncBadgeText.textContent = badgeText;
+      if (el.headerDriveSyncText) el.headerDriveSyncText.textContent = getDriveSyncText(status, text);
+      if (el.headerGoogleUserInfo) el.headerGoogleUserInfo.title = text;
       if (el.settingsSyncStatusText) el.settingsSyncStatusText.textContent = text;
       if (el.settingsSignOutBtn) el.settingsSignOutBtn.style.display = syncState.signedIn ? 'block' : 'none';
     }
@@ -1584,6 +1649,7 @@
         syncState.accessToken = saved.accessToken;
         syncState.tokenExpiresAt = saved.tokenExpiresAt;
         syncState.signedIn = true;
+        syncState.googleUser = getCachedGoogleUser();
         syncState.lastError = null;
         return true;
       } catch (e) {
@@ -1602,7 +1668,7 @@
 
       if (!isGoogleClientConfigured()) {
         syncState.available = false;
-        setSyncStatus('local', 'Saved on this device');
+        setSyncStatus('local', 'Not synced');
         return;
       }
 
@@ -1639,7 +1705,7 @@
       });
 
       syncState.available = true;
-      setSyncStatus('local', 'Saved on this device');
+      setSyncStatus('local', 'Not synced');
 
       if (hasSyncEnabledBefore()) {
         if (restoreTokenSession()) {
@@ -1732,10 +1798,33 @@
       return !!(syncState.accessToken && nowMs() < syncState.tokenExpiresAt);
     }
 
+    function fetchGoogleUserInfo() {
+      if (!syncState.signedIn || !syncState.accessToken) return Promise.resolve(null);
+      return googleFetch('https://www.googleapis.com/oauth2/v2/userinfo')
+        .then(function (response) {
+          if (!response.ok) throw new Error('USERINFO_' + response.status);
+          return response.json();
+        })
+        .then(function (info) {
+          syncState.googleUser = info;
+          cacheGoogleUser(info);
+          refreshGoogleAuthHeader();
+          return info;
+        })
+        .catch(function (e) {
+          syncState.lastError = e;
+          if (!syncState.googleUser) syncState.googleUser = getCachedGoogleUser() || { name: 'Connected' };
+          refreshGoogleAuthHeader();
+          return null;
+        });
+    }
+
     // ═══════════════════════════ SIGN IN / OUT ═══════════════════════════
     function onGoogleSignedIn() {
       syncState.deviceId = syncState.deviceId || getDeviceId();
-      setSyncStatus('syncing', 'Syncing...');
+      syncState.googleUser = syncState.googleUser || getCachedGoogleUser() || { name: 'Connected' };
+      setSyncStatus('syncing', 'Connecting...');
+      fetchGoogleUserInfo();
       syncNow('sign-in')
         .then(function () {
           startSyncPolling();
@@ -1757,13 +1846,15 @@
       syncState.signedIn = false;
       syncState.accessToken = null;
       syncState.tokenExpiresAt = 0;
+      syncState.googleUser = null;
+      clearCachedGoogleUser();
       syncState.driveFileId = null;
       syncState.driveModifiedTime = null;
       syncState.isSyncing = false;
       setSyncEnabledBefore(false);
       clearTokenSession();
 
-      setSyncStatus('local', 'Saved on this device');
+      setSyncStatus('local', 'Not synced');
     }
 
     // ═══════════════════════════ DRIVE FETCH ═══════════════════════════
@@ -2197,7 +2288,7 @@
     // ═══════════════════════════ SYNC ORCHESTRATION ═══════════════════════════
     function syncNow(reason) {
       if (!syncState.signedIn) {
-        setSyncStatus('local', 'Saved on this device');
+        setSyncStatus('local', 'Not synced');
         return Promise.resolve(false);
       }
       if (!navigator.onLine) {
@@ -3717,6 +3808,9 @@
       if (el.googleSignInBtn) {
         el.googleSignInBtn.addEventListener('click', requestGoogleSignIn);
       }
+      if (el.headerGoogleSignOutBtn) {
+        el.headerGoogleSignOutBtn.addEventListener('click', signOutOfSync);
+      }
       if (el.settingsSyncNowBtn) {
         el.settingsSyncNowBtn.addEventListener('click', function () {
           if (!syncState.signedIn) {
@@ -3835,7 +3929,7 @@
       syncState.deviceId = getDeviceId();
       initGoogleAuth(0);
       bindSyncLifecycleEvents();
-      setSyncStatus('local', 'Saved on this device');
+      setSyncStatus('local', 'Not synced');
     }
 
     init();
